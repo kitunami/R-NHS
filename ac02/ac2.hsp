@@ -21,18 +21,23 @@
 	dim obj,100
 	dim model,100
 	dim tex,100
-	dim emodel,100
-	dim eff,100
+	dim acmodel,100
+	dim ac,100
 
 	mov = 0.4
-	chdir dir_home+"/acv2/"
 
-	addxfile m_xmodel,"AC-U1.x"
-	regobj ac, m_xmodel
-	clscolor $FF
+	chdir dir_home+"/acv2/"
+	addxfile acmodel(0),"AC-U1.x"
+	regobj ac(0), acmodel(0)
+
+	chdir dir_home+"/acfa/"
+	addxfile acmodel(1),"WG.x"
+	regobj ac(1), acmodel(1)
+	setpos ac(1),300,0,0
 
 	chdir dir_home
 
+	clscolor $FF
 	texload dir_home+"/image/floor/01.jpg" : tex(0) = stat
 	addmesh model(0),4,4,16,300,300,tex
 	regobj obj(0),model(0)
