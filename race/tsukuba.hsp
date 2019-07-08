@@ -1,8 +1,11 @@
 	#include "hgimg3.as"
+	#include "mod_hgCnvRayCol.hsp"
+	
 
 	bgscr 0,ginfo(20),ginfo(21),0,0,0
 	cls 4
 	hgini
+	hgCnVRayCol_init
 
 	randomize
 
@@ -24,11 +27,14 @@
 	dim emodel,100
 	dim eff,100
 
-	mov = 0.2
+	mov = 0.0
+	M_SP = 0.1
+	rmo = 0.05
 	chdir dir_home+"/tsukuba/"
 
 	addxfile m_corse,"tsukuba.x"
 	regobj corse, m_corse
+	loadTerrain corse,"tsukuba.x"
 	clscolor $FF
 
 	chdir dir_home
@@ -41,8 +47,12 @@
 	walkc = 1.0
 	ww = 0.0
 
+	cax = 0.0 : cay = 0.0 : caz = 0.0
+
 	mouse ginfo(20)/2,ginfo(21)/2
 	mouse -1 : mouse -1
+
+	poly_no = -1
 
 *main
 	stick key,$3ff
@@ -50,31 +60,44 @@
 
 	ary = double(ginfo(20)/2-mousex)/1000
 	arx = 0.0
-	if (((crx < M_PI/4) & (mousey < ginfo(21)/2)) | ((crx > -M_PI/4) & (mousey > ginfo(21)/2))){
-		arx = double(ginfo(21)/2-mousey)/1000
-	}
+	;if (((crx < M_PI/4) & (mousey < ginfo(21)/2)) | ((crx > -M_PI/4) & (mousey > ginfo(21)/2))){
+	;	arx = double(ginfo(21)/2-mousey)/1000
+	;}
 
 	mouse ginfo(20)/2,ginfo(21)/2
 	mouse -1
 
+	ddim mvec,3
+	getMovTerrainGroundCol corse,x,y,z,mvec,100,1,poly_no,ground_f,1
+	y += mvec(1)
+
 	addang HGOBJ_CAMERA, arx,ary
-	setpos HGOBJ_CAMERA, x+sin(cry)*1.2,-0.4,z+cos(cry)*1.2
-	getang HGOBJ_CAMERA, crx,cry,crz
+	if (ary != 0){
+		setpos HGOBJ_CAMERA, x+sin(cry)*1.2,y-0.4,z+cos(cry)*1.2
+		getang HGOBJ_CAMERA, crx,cry,crz
+	} else {
+		setpos HGOBJ_CAMERA, x+sin(cay)*1.2,y-0.4,z+cos(cay)*1.2
+		setang HGOBJ_CAMERA, 0,cay,0
+	}
 	setpos car,x,y,z
+	setang car,cax,cay,caz
 
 	mx = 0.0 :  my = 0.0 : mz = 0.0
 	getkey up,'W'
-	if (up == 1){ mx -= sin(cry)*mov : mz -= cos(cry)*mov }
+	if (up == 1){ m_cou++ : mov += M_SP*(-10000.0/(m_cou+10000)+1) } else { m_cou = 0 }
+	if (mov > 0){ mov -= mov/100 } else { mov = 0.0 }
 	getkey dw,'S'
-	if (dw == 1){ mx += sin(cry)*mov : mz += cos(cry)*mov }
+	if (dw == 1){ mov -= mov/2 }
+	mx -= sin(cay)*mov : mz -= cos(cay)*mov	
 	getkey ri,'D'
-	if (ri == 1){ mx += cos(cry)*mov : mz -= sin(cry)*mov }
+	if (ri == 1){ cay -= rmo }
 	getkey le,'A'
-	if (le == 1){ mx -= cos(cry)*mov : mz += sin(cry)*mov }
+	if (le == 1){ cay += rmo }
 	getkey un,'Q'
 	if (un == 1){ my += mov }
 	getkey ov,'E'
 	if (ov == 1){ my -= mov }
+
 
 	getkey ds,16
 	x += mx*(1+ds*2) : y += my*(1+ds*2) : z += mz*(1+ds*2)
@@ -87,6 +110,7 @@
 			mes x
 			mes y
 			mes z
+			mes m_cou
 		gsel 0
 	}
 

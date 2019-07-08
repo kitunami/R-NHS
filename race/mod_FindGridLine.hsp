@@ -1,0 +1,443 @@
+#ifndef __FindGridLine__
+#define __FindGridLine__
+
+//このモジュールは無保証です。
+//このモジュールを利用して生じた問題の一切の責任を負いかねます。
+#module "mod_FindGridLine"
+
+//グリッドの境界線とクロスした座標
+#define global GridCrossPosx x1@mod_FindGridLine
+#define global GridCrossPosy y1@mod_FindGridLine
+
+
+//「FindGridLineとNextGridLineを組み合わせた命令」
+//FindGridLineAll   array_line_hit, map_data,  array_line_x1,  array_line_y1,  array_line_x2,  array_line_y2, Tile_Size, linmax, loopf, maplen_x, maplen_y
+//	array_line_hit	: 当たったマップナンバーが返る（通し番号）
+//	map_data	: マップデータ（0以外は当たり）「2次元配列」
+//	array_line_x1,  array_line_y1: 直線の始点XY
+//	array_line_x2,  array_line_y2: 直線の終点XY
+//	Tile_Size		: 1マスのサイズ
+//	linmax			: 直線の数
+//	loopf			: 開始地点も判定するか「0＝する、1＝しない」
+//	maplen_x, maplen_y	：マップの縦横要素数個数(省略時map_dataを基に取得)
+//返り値：当たってたらstatに1が返る
+#deffunc FindGridLineAll array  array_line_hit,array map_data,array  array_line_x1,array  array_line_y1,array  array_line_x2,array  array_line_y2,int Tile_Size,int linmax,int loopf,int maplen_x,int maplen_y
+hit_cnt=0
+TileSize=Tile_Size
+repeat linmax+(linmax=0)
+	FindGridLine array_line_hit(hit_cnt),map_data,  array_line_x1(cnt),  array_line_y1(cnt),  array_line_x2(cnt),  array_line_y2(cnt), TileSize,loopf, maplen_x, maplen_y
+	repeat maplenx+mapleny
+		if  (stat<=0) {break}
+		hit_cnt++
+		NextGridLine array_line_hit(hit_cnt)
+	loop
+
+loop
+return hit_cnt
+
+
+
+//「直線のライン上に0以外があるかmap_dataを判定（0以外があったら一旦抜けるのでNextGridLineを使って同じライン上の先を判定できる）」
+//FindGridLine  line_hit, map_data, line_x1, line_y1, line_x2, line_y2, Tile_Size, loopf, maplen_x, maplen_y
+//	line_hit	: 当たったマップナンバーが返る（通し番号）
+//	map_data	: マップデータ（0以外は当たり）「2次元配列」
+//	line_x1, line_y1: 直線の始点XY
+//	line_x2, line_y2: 直線の終点XY
+//	Tile_Size		: 1マスのサイズ
+//	loopf			: 開始地点も判定するか「0＝する、1＝しない」
+//	maplen_x, maplen_y	：マップの縦横要素数個数(省略時map_dataを基に取得)
+//返り値：当たってたらstatに1が返る
+//複数ラインの当たりを全て取得するならFindGridLineAllが使える
+#deffunc FindGridLine var  line_hit,array map_data,int  line_x1,int  line_y1,int  line_x2,int  line_y2,int Tile_Size,int loopf,int maplen_x,int maplen_y
+	mref _stat,64
+	_stat=0
+	NextGridEnd=-1
+	TileSize=Tile_Size
+	
+	if maplen_x {maplenx=maplen_x}else{maplenx=length(map_data)}
+	if maplen_y {mapleny=maplen_y}else{mapleny=length2(map_data)}
+
+	dupptr  dup_map_data,varptr(map_data),maplenx*mapleny*4,4
+
+	line_hit=line_y1/TileSize*maplenx+line_x1/TileSize
+
+	x1 = 0.0+line_x1
+	y1 = 0.0+line_y1
+		
+	VectorX=((0.0+line_x2)-x1)
+	VectorY=((0.0+line_y2)-y1)	
+
+	Distance=sqrt(VectorX*VectorX+VectorY*VectorY)
+	if Distance ! 0.0 {
+		
+		vx=VectorX/Distance //Ｘの速度
+		vy=VectorY/Distance //Ｙの速度
+		
+		ZeroF=1//斜めに進んでるフラグ（0なら縦か横どりらかに直進）
+		if VectorX ! 0.0{
+
+			if VectorX<0.0 {//左側に進んでる
+				TileSizeX=-TileSize
+
+			
+				line_EndX=0.0+((line_x2/TileSize)*TileSize-TileSize) //Xの最終地点（グリッドの座標）
+				line_NextX=0.0+((line_x1/TileSize)*TileSize)-1//Xの次に通過するグリッドライン
+			}else{//右側に進んでる
+				line_EndX=0.0+((line_x2/TileSize)*TileSize+TileSize*2)	
+				line_NextX=0.0+((line_x1/TileSize)*TileSize+TileSize)
+				TileSizeX=TileSize
+			}
+			
+		}else{
+			ZeroF=0
+			PassTimeX=99999999999.999 //PassTimeYより大きくなるように適当な数値
+		}
+		
+		if VectorY ! 0.0{
+
+			if VectorY<0.0 {//上側に進んでる
+			
+				line_EndY=0.0+((line_y2/TileSize)*TileSize-TileSize)
+				line_NextY=0.0+((line_y1/TileSize)*TileSize)-1
+				TileSizeY=-TileSize
+			}else{//下側に進んでる
+				line_EndY=0.0+((line_y2/TileSize)*TileSize+TileSize*2)
+				line_NextY=0.0+((line_y1/TileSize)*TileSize+TileSize)
+				TileSizeY=TileSize
+			}
+
+		}else{
+			ZeroF=0
+			PassTimeY=99999999999.999 //PassTimeXより大きくなるように適当な数値
+		}
+
+		if dup_map_data(line_hit)=0 or loopf=1 {//開始地点の判定
+
+
+			NextGridLine line_hit
+
+		}else{//開始地点の判定でヒット
+					;ヒットしている
+		_stat = 1
+
+		}	
+	
+	}else{
+		if dup_map_data(line_hit) {//開始地点の判定
+		;ヒットしている
+			NextGridEnd=0
+			_stat = 1
+
+		}else{_stat = -1}
+
+
+	}
+		
+return atan(VectorY,VectorX)
+
+	
+//「FindGridLineの後に使用」
+//NextGridLine  line_hit, map_data, Tile_Size
+//	line_hit	: 当たったマップナンバーが返る（通し番号）
+#deffunc NextGridLine var line_hit
+	_stat=0
+	repeat NextGridEnd
+
+		if ZeroF {//フラグ1なので斜めに進んでる
+				PassTimeX=(line_NextX-x1)/vx  //グリッドラインまでの通過カウント（少ないほど早い）
+				PassTimeY=(line_NextY-y1)/vy
+		}else{//縦横どちらかに進んでる
+			if VectorX ! 0.0 {//横に進んでるのでPassTimeXだけ計算して設定してPassTimeYは、それより大きくなるようにする
+				PassTimeX=(line_NextX-x1)/vx   //グリッドラインまでの通過カウント
+				PassTimeY=PassTimeX+1.0
+			}else{//縦に進んでるのでPassTimeYだけ計算して設定してPassTimeXは、それより大きくなるようにする
+				PassTimeY=(line_NextY-y1)/vy  //グリッドラインまでの通過カウント
+				PassTimeX=PassTimeY+1.0
+			}
+		}
+
+
+		if (PassTimeX < PassTimeY) {//縦ライン(X方向)の方を先に通過する
+			x1=line_NextX //今回使ったグリッドラインを現在のX座標に
+			line_NextX+TileSizeX //次回グリッドライン座標を設定
+
+			if 	VectorX<0.0 {
+				if line_NextX <= line_EndX {NextGridEnd=0:_stat=-1:break} //次のグリッドラインが最終グリッドラインに到達してたら判定終了
+			}else{
+				if line_NextX >= line_EndX {NextGridEnd=0:_stat=-1:break} //次のグリッドラインが最終グリッドラインに到達してたら判定終了
+			}
+			line_hit=((0+y1)/TileSize)*maplenx;+(0+x1)/TileSize
+			y1+=PassTimeX*vy //Ｘがグリッドラインに到達した時間でYが進めた距離を加算
+			if dup_map_data(line_hit+(0+x1)/TileSize)  {;ヒットしている
+				line_hit+=(0+x1)/TileSize
+				_stat++
+				break
+
+			}
+
+
+		}else{//横ライン(Y方向)の方を先に通過する(同時でもこちら)
+			y1=line_NextY
+			line_NextY+TileSizeY
+
+			if 	VectorY<0.0 {
+				if line_NextY <= line_EndY {NextGridEnd=0:_stat=-1:break} //次のグリッドラインが最終グリッドラインに到達してたら判定終了
+			}else{
+				if line_NextY >= line_EndY {NextGridEnd=0:_stat=-1:break} //次のグリッドラインが最終グリッドラインに到達してたら判定終了
+			}		
+
+			line_hit=((0+y1)/TileSize)*maplenx
+
+			if dup_map_data(line_hit+(0+x1)/TileSize)  {;ヒットしている
+				line_hit+=(0+x1)/TileSize
+				_stat++
+				x1+=PassTimeY*vx
+				break
+			}
+			x1+=PassTimeY*vx
+		
+			if (PassTimeX = PassTimeY) {//グリッドの交差部分用の対策
+				line_NextX+TileSizeX
+				line_hit=((0+y1)/TileSize)*maplenx
+				if dup_map_data(line_hit+(0+x1)/TileSize)  {;ヒットしている
+				line_hit+=(0+x1)/TileSize
+				_stat++
+					break
+				}
+			}
+
+		}
+	loop
+	if _stat=0 {NextGridEnd=0}
+	return 
+
+#define global getCLerr err_ClipLine@mod_FindGridLine
+
+
+	
+//「指定サイズ外の直線をカットする」
+//ClipLine   array_line_x1,  array_line_y1,  array_line_x2,  array_line_y2, i_clipsizex, i_clipsizey, linmax
+//	array_line_x1,array_line_y1	: 直線の始点XY
+//	array_line_x2,array_line_y2	: 直線の終点XY
+//	i_clipsizex, i_clipsizey	：有効範囲XY
+//	linmax						：直線の数
+//返り値：statに始点終点両方とも範囲外だった数が返る（配列変数 getCLerr でどれが範囲外だったか取得出来る）
+/*：例
+repeat linmax
+	if getCLerr(cnt)=0 {有効ライン}
+loop
+*/
+#deffunc ClipLine array  array_line_x1,array  array_line_y1,array  array_line_x2,array  array_line_y2,int i_clipsizex,int i_clipsizey,int linmax
+
+	err_stat=0
+	dim err_ClipLine,(linmax+(linmax=0))*2
+
+clipsizex=i_clipsizex+1
+clipsizey=i_clipsizey+1
+
+
+	repeat (linmax+(linmax=0))*2
+		hcnt=cnt/2
+		if cnt\2 {
+			dup dup_line_x1,array_line_x2(hcnt)
+			dup dup_line_y1,array_line_y2(hcnt)
+
+			dup dup_line_x2,array_line_x1(hcnt)
+			dup dup_line_y2,array_line_y1(hcnt)
+
+		}else{
+			
+			dup dup_line_x1,array_line_x1(hcnt)
+			dup dup_line_y1,array_line_y1(hcnt)
+
+			dup dup_line_x2,array_line_x2(hcnt)
+			dup dup_line_y2,array_line_y2(hcnt)
+			bak_line_x1=dup_line_x1
+			bak_line_y1=dup_line_y1
+
+		}
+		dx=0.0+dup_line_x2-dup_line_x1
+		dy=0.0+dup_line_y2-dup_line_y1
+
+		if dx=0.0 {dx=0.00001}
+		if dy=0.0 {dy=0.00001}
+
+		if dup_line_x1<0 or dup_line_y1<0{//←↓
+
+			if dup_line_y1>0 {
+				if dup_line_y1<clipsizey {//←確定
+					dspy=dy/dx
+					dup_line_y1-=(dspy*dup_line_x1)
+					if dup_line_y1<0  or dup_line_y1>i_clipsizey or dup_line_x2<0{
+						if ((cnt\2)=0) {dup_line_y1=bak_line_y1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_y1+=(dspy*dup_line_x1):err_ClipLine(hcnt)=1:err_stat++:continue 
+					}
+					dup_line_x1-dup_line_x1
+				}else{
+
+					xx1=0.0+dup_line_x1
+					yy1=0.0+(dup_line_y1-i_clipsizey)
+						 
+					if ( (xx1/dx) > (yy1/dy) )  {//↓確定
+						dspx=dx/dy
+						dup_line_x1-=(dspx*(dup_line_y1-i_clipsizey))
+						if dup_line_x1<0  or dup_line_x1>i_clipsizex or dup_line_y2>i_clipsizey{
+						if ((cnt\2)=0) {dup_line_x1=bak_line_x1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_x1+=(dspx*(dup_line_y1-i_clipsizey)):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+						dup_line_y1-dup_line_y1-i_clipsizey
+					}else{//←確定
+						dspy=dy/dx
+						dup_line_y1-=(dspy*dup_line_x1)
+						if dup_line_y1<0  or dup_line_y1>i_clipsizey or dup_line_x2<0{
+						if ((cnt\2)=0) {dup_line_y1=bak_line_y1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_y1+=(dspy*dup_line_x1):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+						dup_line_x1-dup_line_x1
+					}
+				}
+				
+			}else{//→↑
+
+				if dup_line_x1>0 {//→↑
+					if dup_line_x1<clipsizex {//↑確定
+						dspx=dx/dy
+						dup_line_x1-=(dspx*dup_line_y1)
+						if dup_line_x1<0 or dup_line_x1>i_clipsizex or dup_line_y2<0{
+						if ((cnt\2)=0) {dup_line_x1=bak_line_x1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_x1+=(dspx*dup_line_y1):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+						dup_line_y1-dup_line_y1
+					}else{//→↑
+
+						xx1=0.0+dup_line_x1-i_clipsizex
+						yy1=0.0+dup_line_y1
+					
+						if (xx1/dx) > (yy1/dy)   {//↑確定
+							dspx=dx/dy
+							dup_line_x1-=(dspx*dup_line_y1)
+							if dup_line_x1<0  or dup_line_x1>i_clipsizex or dup_line_y2<0{
+						if ((cnt\2)=0) {dup_line_x1=bak_line_x1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_x1+=(dspx*dup_line_y1):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+							dup_line_y1-dup_line_y1
+						}else{//→確定
+							dspy=dy/dx
+							dup_line_y1-=(dspy*(dup_line_x1-i_clipsizex))
+							if dup_line_y1<0  or dup_line_y1>i_clipsizey or dup_line_x2>i_clipsizex{
+						if ((cnt\2)=0) {dup_line_y1=bak_line_y1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_y1+=(dspy*(dup_line_x1-i_clipsizex)):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+							dup_line_x1-dup_line_x1-i_clipsizex 
+						}
+					} 
+					 
+				}else{//←↑
+					xx1=0.0+dup_line_x1
+					yy1=0.0+dup_line_y1
+					if (xx1/dx) > (yy1/dy)   {//↑確定
+						dspx=dx/dy
+						dup_line_x1-=(dspx*dup_line_y1)
+						if dup_line_x1<0  or dup_line_x1>i_clipsizex or dup_line_y2<0{
+						if ((cnt\2)=0) {dup_line_x1=bak_line_x1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_x1+=(dspx*dup_line_y1):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+						dup_line_y1-dup_line_y1
+					}else{//←確定
+						dspy=dy/dx
+						dup_line_y1-=(dspy*dup_line_x1)
+						if dup_line_y1<0  or dup_line_y1>i_clipsizey or dup_line_x2<0{
+						if ((cnt\2)=0) {dup_line_y1=bak_line_y1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_y1+=(dspy*dup_line_x1):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+						dup_line_x1-dup_line_x1
+					}
+				}
+			}
+
+		}else{//→↓
+			if dup_line_y1<clipsizey {//→
+				if  dup_line_x1>=clipsizex  {//→確定
+					dspy=dy/dx
+					dup_line_y1-=(dspy*(dup_line_x1-i_clipsizex))
+					if dup_line_y1<0  or dup_line_y1>i_clipsizey or dup_line_x2>i_clipsizex{
+						if ((cnt\2)=0) {dup_line_y1=bak_line_y1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_y1+=(dspy*(dup_line_x1-i_clipsizex)):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+					dup_line_x1-dup_line_x1-i_clipsizex 
+				}
+				
+			}else{//→↓
+				if dup_line_x1<clipsizex {//↓確定
+
+					dspx=dx/dy
+					dup_line_x1-=(dspx*(dup_line_y1-i_clipsizey))
+					if dup_line_x1<0  or dup_line_x1>i_clipsizex or dup_line_y2>i_clipsizey{
+						if ((cnt\2)=0) {dup_line_x1=bak_line_x1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_x1+=(dspx*(dup_line_y1-i_clipsizey)):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+					dup_line_y1-dup_line_y1-i_clipsizey
+
+				}else{//→↓
+					xx1=0.0+dup_line_x1-i_clipsizex
+					yy1=0.0+dup_line_y1-i_clipsizey
+				
+					if (xx1/dx) > (yy1/dy)   {//↓確定
+
+						dspx=dx/dy
+						dup_line_x1-=(dspx*(dup_line_y1-i_clipsizey))
+						if dup_line_x1<0  or dup_line_x1>i_clipsizex or dup_line_y2>i_clipsizey{
+						if ((cnt\2)=0) {dup_line_x1=bak_line_x1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_x1+=(dspx*(dup_line_y1-i_clipsizey)):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+						dup_line_y1-dup_line_y1-i_clipsizey
+
+					}else{//→確定
+
+						dspy=dy/dx
+						dup_line_y1-=(dspy*(dup_line_x1-i_clipsizex))
+						if dup_line_y1<0  or dup_line_y1>i_clipsizey or dup_line_x2>i_clipsizex{
+						if ((cnt\2)=0) {dup_line_y1=bak_line_y1:err_ClipLine(hcnt)=1:err_stat++:continue cnt+2}
+						dup_line_x2=bak_line_x1
+						dup_line_y2=bak_line_y1
+						dup_line_y1+=(dspy*(dup_line_x1-i_clipsizex)):err_ClipLine(hcnt)=1:err_stat++:continue
+						}
+						dup_line_x1-dup_line_x1-i_clipsizex 
+
+					}
+
+				}
+
+
+			}
+		}
+
+
+	loop
+
+return err_stat
+#global
+#endif
+

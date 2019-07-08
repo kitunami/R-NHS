@@ -1,0 +1,4496 @@
+#ifdef _debug
+	#ifndef   mod_hgCnvRayCol_debug
+//デバッグ用表示スイッチマクロ定義（ライン表示はTriLine_debug実行で表示される、ボックスはBoundingbox_debug実行で移動等に対応）
+		#define mod_hgCnvRayCol_debug 0//-1=全てOFF、0=全てON、1=TerrainGroundのライン非表示、2=TerrainWallのライン非表示、4=Terrainのライン非表示、8=TerrainTriのライン非表示、16=setBoundingBoxで登録したオブジェクトに重なるボックス非表示、64=loadTerrain実行時の作業工程非表示、128=loadTerrainの区域分割時のライン非表示
+	#endif
+#else
+	#undef mod_hgCnvRayCol_debug
+
+#endif
+
+
+#include "hgimg3.as"
+#include "mod_FindGridLine.hsp"
+
+#ifndef __hgCnvRayCol__
+#define __hgCnvRayCol__
+//このモジュールは無保証です。
+//このモジュールを利用して生じた問題の一切の責任を負いかねます。
+#define mod_hgCnvRayCol_VER 0.72
+
+//#define global mod_hgCnvRayCol_debug	0	//このマクロ定義はmod_hgCnvRayColのインクルード前にしてください
+
+
+
+
+#module "mod_hgCnvRayCol"
+#uselib "User32.dll"
+#func  modhg_setVec4  "SetRect"       var,float,float,float,float
+#func  setVec3 "SetRect"       var,float,float,float,nullptr
+#func  setVec4  "SetRect"       var,float,float,float,float
+#define global setfloat4(%1,%2=0.0,%3=0.0,%4=0.0,%5=0.0) %1(3) + 0:modhg_setVec4@mod_hgCnvRayCol %1,%2,%3,%4,%5
+
+
+#uselib "d3dx9_39.dll"
+#func   D3DXPlaneFromPoints        "D3DXPlaneFromPoints"        var,var,var,var
+#func   D3DXPlaneIntersectLine        "D3DXPlaneIntersectLine"        var,var,var,var
+#func   D3DXVec3Normalize        "D3DXVec3Normalize"        var,var
+#cfunc   D3DXSphereBoundProbe        "D3DXSphereBoundProbe"        var,float,var,var
+#func   D3DXIntersectTri        "D3DXIntersectTri"        var,var,var ,var,var ,var,var ,var
+#cfunc   D3DXBoxBoundProbe        "D3DXBoxBoundProbe"        var,var,var ,var
+#func   D3DXComputeBoundingBox        "D3DXComputeBoundingBox"        var,int,int ,var,var
+#func   D3DXPlaneNormalize        "D3DXPlaneNormalize"        var,var
+#func   D3DXPlaneTransform        "D3DXPlaneTransform"        var,var,var
+
+
+#func  D3DXMatrixRotationX				"D3DXMatrixRotationX" var,float
+#func  D3DXMatrixRotationY				"D3DXMatrixRotationY" var,float
+#func  D3DXMatrixRotationZ				"D3DXMatrixRotationZ" var,float
+
+#func  D3DXMatrixTranslation			"D3DXMatrixTranslation"  var,float,float,float
+#func  D3DXMatrixMultiply				"D3DXMatrixMultiply"   var,var,var
+#func  D3DXMatrixRotationYawPitchRoll 	"D3DXMatrixRotationYawPitchRoll"     var,float,float,float
+#func  D3DXMatrixRotationAxis			"D3DXMatrixRotationAxis"        var,var,float
+#func  D3DXMatrixTranspose			"D3DXMatrixTranspose"        var,var
+
+
+#ifndef ftd
+//「----floatからdoubleに変換----」
+//変数 = ftd( float )
+#defcfunc ftd int p1 
+	dtftemp@FloatToDouble=p1*$20000000,p1 & 0x80000000 | ((p1 & 0x7fffffff) / 8) + ((p1 & 0x7fffffff) ! 0) * 0x38000000
+return dup_temp_double2
+#endif
+
+
+//ローカルマクロ（FloatToDoubleの結果をgetDoubleで参照）
+#define FloatToDouble(%1) dtftemp_local=(%1)*$20000000,(%1) & 0x80000000 | (((%1) & 0x7fffffff) / 8) + (((%1) & 0x7fffffff) ! 0) * 0x38000000
+#define getDouble dup_temp_double2_local
+//「----floatからdoubleに変換----」(ローカル関数)
+//変数 = modhg_ftd( float )
+#defcfunc local modhg_ftd int p1 
+	dtftemp=p1*$20000000,p1 & 0x80000000 | ((p1 & 0x7fffffff) / 8) + ((p1 & 0x7fffffff) ! 0) * 0x38000000
+return dup_temp_double2
+
+//[---面法線を入力して面の角度取得---]
+//NormalToAng %1, %2, %3, %4
+// %1 = 面法線(3要素配列入力)
+// %2 = X軸角度(出力)
+// %3 = X軸角度(出力)
+// %4 = X軸角度(出力)
+#define global NormalToAng(%1,%2,%3,%4) fvset fv@mod_hgCnvRayCol,%1,-%1(2),-%1(1) :fvface fv@mod_hgCnvRayCol,0.0,0.0,0.0 :%2=fv@mod_hgCnvRayCol:%3=fv@mod_hgCnvRayCol(2):%4=fv@mod_hgCnvRayCol(1)
+
+;#define global NormalToAxisAng(%1,%2,%3,%4,%5) fvset fv@mod_hgCnvRayCol,%1,0.0,%1(2) :fvouter fv@mod_hgCnvRayCol,%1,%1(1),%1(2) :%2=fv@mod_hgCnvRayCol:%3=fv@mod_hgCnvRayCol(1):%4=fv@mod_hgCnvRayCol(2):%5=atan(sqrt( 1.0-double(%1(1))*%1(1) ),-%1(1))
+
+#define global NormalToXAxisAng(%1,%2,%3,%4,%5) fvset fv@mod_hgCnvRayCol,0.0,%1(1),%1(2) :fvouter fv@mod_hgCnvRayCol,%1,%1(1),%1(2) :%2=fv@mod_hgCnvRayCol:%3=fv@mod_hgCnvRayCol(1):%4=fv@mod_hgCnvRayCol(2):%5=atan(sqrt( 1.0-double(%1(0))*%1(0) ),-%1(0))
+
+#define global NormalToAxisAng(%1,%2,%3,%4,%5) fvset fv,%1(0),%1(1),%1(2):fvset xyz_,%1(0),%1(1),%1(2):fvouter fv,0.0,-1.0,0.0:fvunit fv:%2=fv(0):%3=fv(1):%4=fv(2):fvinner xyz_,0.0,0.-1,0.0:%5=atan(sqrt(1.0-(xyz_*xyz_)),xyz_)
+
+
+//カメラモードの取得が出来ないのでcammodeを乗っ取って取得(hgimg3は色々な命令でこう言うのがあって結構困る・・・)
+#undef cammode
+#define global cammode(%1=0) _cammode %1
+
+#deffunc _cammode int CAM_MODE
+	CAM_MODE_bak=CAM_MODE
+	cammode@hsp CAM_MODE
+return
+
+
+//[---平面との交点調査用の平面を作成---]
+//setPlane pid, v1, v2, v3
+// pid = 平面任意ID(入力)
+// v1 = 平面の頂点3D座標配列1(3要素入力)
+// v2 = 平面の頂点3D座標配列2(3要素入力)
+// v3 = 平面の頂点3D座標配列3(3要素入力)
+#deffunc setPlane int pid,array v1,array v2,array v3
+	modhg_setVec4 av,v1,v1(1),v1(2),0.0
+	modhg_setVec4 bv,v2,v2(1),v2(2),0.0
+	modhg_setVec4 cv,v3,v3(1),v3(2),0.0
+	Plane(pid*4+4)+0
+	D3DXPlaneFromPoints Plane(pid*4),av,bv,cv
+	D3DXPlaneNormalize Plane(pid*4),Plane(pid*4)
+return 
+
+
+//[---平面と直線の交点を調べる---]
+//getPlaneLinePoint px, py, pz, pid, v1, v2
+// wpx = 交点の3DX座標を取得
+// wpy = 交点の3DY座標を取得
+// wpz = 交点の3DZ座標を取得
+// pid = 平面ID(入力)
+// v1 = 直線の基点3D座標(3要素入力)
+// v2 = 直線の終点3D座標(3要素入力)
+#deffunc getPlaneLinePoint var wpx,var wpy,var wpz,int pid,array v1,array v2
+	modhg_setVec4 av,v1,v1(1),v1(2),0.0
+	modhg_setVec4 bv,v2,v2(1),v2(2),0.0
+	D3DXPlaneIntersectLine temp_vecf3,Plane(pid*4),av,bv
+	stat_c=stat
+	wpx=modhg_ftd@mod_hgCnvRayCol(temp_vecf3)
+	wpy=modhg_ftd@mod_hgCnvRayCol(temp_vecf3(1))
+	wpz=modhg_ftd@mod_hgCnvRayCol(temp_vecf3(2))
+return
+
+//[---平面と 3D ベクトルの内積を計算する---]
+//PlaneDotNormal pid, VECTOR3
+#defcfunc PlaneDotNormal int pid,array VECTOR3
+	dup dup_PLANE,Plane(pid*4)
+return ftd(dup_PLANE)*VECTOR3+ftd(dup_PLANE(1))*VECTOR3(1)+ftd(dup_PLANE(2))*VECTOR3(2)
+
+
+//[---モジュールの初期化---]
+//hgCnvRayCol_init
+//必ずhginiの後に実行(カメラのefxグループを変更したりスクリーンサイズを変更した時も実行する必要がある)
+//返り値refdvalにスクリーン座標系から3D座標系に変換する実数値が返る
+//refdval*スクリーン座標*カメラからの距離で2Dから3Dに出来る
+#deffunc hgCnvRayCol_init
+	getefx HGOBJ_CAMERA,FOV,NearZ,FarZ
+	fvset fv3asi,0,0,0
+	fvset fv,0,0,0
+	sdim debug_test_tnolist
+	tid_bak=-1
+
+	ssx=1.0*ginfo_sx
+	ssy=1.0*ginfo_sy
+	whsx=0.5*ssx
+	whsy=0.5*ssy
+	wwx=ssx/ginfo_winx
+	wwy=ssy/ginfo_winy
+	whswx=whsx/wwx
+	whswy=whsy/wwy
+
+	tc=sin(0.5*FOV)/cos(0.5*FOV)/whsy
+	tcwx=tc*wwx
+	tcwy=tc*wwy
+
+	NFZ=(1.0-NearZ/FarZ)
+	FFNZ=(FarZ/(FarZ-NearZ))
+	TNZ=(tc*NearZ)
+	NZ_FFNZ=FFNZ*NearZ
+	
+
+	if dtftemp_ptr=0 {
+		if vartype(Gap)=4 {_setTerrainPar 0.01,2.0,90.0,0.000001,100.0,100.0}
+		dim temp_Mat,16
+		dim TurnMat,16
+	dupptr dup_mov,varptr(temp_Mat(12)),4*3,4
+		dim hitBound_idlist,10
+		ddim hitBound_timelist,10
+		dim polcnt_list,10
+			
+		dim setVec3_temp,4
+		dim av,4
+		dim bv,4
+		dim cv,4
+		dim temp_vecf3,3
+		dim Plane,4
+		fvset opos,0.0,0.0,0.0
+		dupptr dup_oposy,varptr(opos(1)),8,3
+
+		fvset rv,0.0,0.0,0.0
+		
+		dupptr dup_addx,varptr(rv),8,3
+		dupptr dup_addy,varptr(rv(1)),8,3
+		dupptr dup_addz,varptr(rv(2)),8,3
+
+
+		dim dtftemp@FloatToDouble,2*16
+		dtftemp_ptr=varptr(dtftemp@FloatToDouble)
+		dupptr dup_temp_double2,dtftemp_ptr,32,3
+
+		dim dtftemp_local,2*16
+		dtftemp_local_ptr=varptr(dtftemp_local)
+		dupptr dup_temp_double2_local,dtftemp_local_ptr,32,3
+
+
+		dim RayDirection_f,4
+		dim RayPosition_f,4
+		dim RayDirection2_f,4
+		dim RayPosition2_f,4
+		dim f_RayDir,4
+		dim f_RayPos,4
+		dim pMin_f,4
+		dim pMax_f,4
+		dim bbox_f,12*3*3
+		ddim vxyz,3
+		dup dup_vx,vxyz
+		dup dup_vy,vxyz(1)
+		dup dup_vz,vxyz(2)
+		ddim box_mn,3*12
+
+
+		bm_debug = {"
+			xof 0302txt 0064
+
+			Mesh {
+			 20;
+			 -0.50000;0.50000;0.50000;,
+			 0.50000;0.50000;0.50000;,
+			 0.50000;-0.50000;0.50000;,
+			 -0.50000;-0.50000;0.50000;,
+			 0.50000;0.50000;0.50000;,
+			 0.50000;0.50000;-0.50000;,
+			 0.50000;-0.50000;-0.50000;,
+			 0.50000;-0.50000;0.50000;,
+			 0.50000;0.50000;-0.50000;,
+			 -0.50000;0.50000;-0.50000;,
+			 -0.50000;-0.50000;-0.50000;,
+			 0.50000;-0.50000;-0.50000;,
+			 -0.50000;0.50000;-0.50000;,
+			 -0.50000;0.50000;0.50000;,
+			 -0.50000;-0.50000;0.50000;,
+			 -0.50000;-0.50000;-0.50000;,
+			 0.50000;0.50000;0.50000;,
+			 -0.50000;0.50000;0.50000;,
+			 -0.50000;-0.50000;0.50000;,
+			 0.50000;-0.50000;0.50000;;
+			 
+			 6;
+			 4;3,2,1,0;,
+			 4;7,6,5,4;,
+			 4;11,10,9,8;,
+			 4;15,14,13,12;,
+			 4;17,16,5,12;,
+			 4;15,6,19,18;;
+			 
+			 MeshMaterialList {
+			  1;
+			  6;
+			  0,
+			  0,
+			  0,
+			  0,
+			  0,
+			  0;;
+			  Material {
+			   1.000000;1.000000;1.000000;1.000000;;
+			   0.000000;
+			   0.000000;0.000000;0.000000;;
+			   0.000000;0.000000;0.000000;;
+			  }
+			 }
+			 MeshNormals {
+			  6;
+			  0.000000;0.000000;1.000000;,
+			  1.000000;0.000000;0.000000;,
+			  0.000000;0.000000;-1.000000;,
+			  -1.000000;0.000000;0.000000;,
+			  0.000000;1.000000;0.000000;,
+			  0.000000;-1.000000;0.000000;;
+			  6;
+			  4;0,0,0,0;,
+			  4;1,1,1,1;,
+			  4;2,2,2,2;,
+			  4;3,3,3,3;,
+			  4;4,4,4,4;,
+			  4;5,5,5,5;;
+			 }
+			 MeshTextureCoords {
+			  20;
+			  0.000000;0.000000;,
+			  1.000000;0.000000;,
+			  1.000000;1.000000;,
+			  0.000000;1.000000;,
+			  0.000000;0.000000;,
+			  1.000000;0.000000;,
+			  1.000000;1.000000;,
+			  0.000000;1.000000;,
+			  0.000000;0.000000;,
+			  1.000000;0.000000;,
+			  1.000000;1.000000;,
+			  0.000000;1.000000;,
+			  0.000000;0.000000;,
+			  1.000000;0.000000;,
+			  1.000000;1.000000;,
+			  0.000000;1.000000;,
+			  1.000000;1.000000;,
+			  0.000000;1.000000;,
+			  0.000000;0.000000;,
+			  1.000000;0.000000;;
+			 }
+			}
+		"}
+
+		memfile bm_debug
+
+
+	addxfile bmid_debug, "MEM:bm_debug.x"
+	modelshade bmid_debug,0
+modelorder bmid_debug,0
+
+
+
+		pxyz= 0.5,0.5,0.5, 0.5,-0.5,0.5, -0.5,-0.5,0.5, -0.5,0.5,0.5, 0.5,0.5,-0.5, 0.5,-0.5,-0.5, 0.5,-0.5,0.5, 0.5,0.5,0.5, -0.5,0.5,-0.5, -0.5,-0.5,-0.5, 0.5,-0.5,-0.5, 0.5,0.5,-0.5, -0.5,0.5,0.5, -0.5,-0.5,0.5, -0.5,-0.5,-0.5, -0.5,0.5,-0.5, 0.5,0.5,0.5, -0.5,0.5,0.5, 0.5,-0.5,0.5, -0.5,-0.5,0.5
+
+		repeat 3*12*3
+			pxyz(cnt)*-1
+		loop
+		tpno= 2,1,0, 3,2,0, 6,5,4, 7,6,4, 10,9,8, 11,10,8, 14,13,12, 15,14,12, 17,16,4, 15,17,4, 14,5,18, 19,14,18
+		repeat 12
+			porcnt=cnt*3
+			repeat 3
+				setfloat4 pMin_f,pxyz(tpno(porcnt+cnt)*3),pxyz(tpno(porcnt+cnt)*3+1),pxyz(tpno(porcnt+cnt)*3+2)
+				memcpy bbox_f(porcnt*3+cnt*3),pMin_f,12
+			loop
+			memcpy vxyz,pxyz(tpno(porcnt+1)*3),24
+			fvset outer,dup_vx-pxyz(tpno(porcnt+2)*3),dup_vy-pxyz(tpno(porcnt+2)*3+1),dup_vz-pxyz(tpno(porcnt+2)*3+2)
+			fvouter outer,-dup_vx+pxyz(tpno(porcnt)*3),-dup_vy+pxyz(tpno(porcnt)*3+1),-dup_vz+pxyz(tpno(porcnt)*3+2)
+			fvunit outer
+			memcpy box_mn(porcnt),outer,24
+		loop
+
+	}
+return tc
+
+
+//hgcnvaxisのmode(0)で取得できるZバッファ値をワールド座標系のZ距離にする
+#define global ctype DtoZ(%1) ( NZ_FFNZ@mod_hgCnvRayCol/((%1)-FFNZ@mod_hgCnvRayCol))
+
+//hgcnvaxisのmode(2)で取得できるカメラZ距離をZバッファ値にする
+#define global ctype ZtoD(%1)(FFNZ@mod_hgCnvRayCol+NZ@mod_hgCnvRayCol/(%1))
+
+//[---スクリーン座標をワールド座標に変換---]
+//fvstw wp, sx, sy, cdz
+// wp = 3D座標を取得する配列(wp=x,y,z)
+// sx  = スクリーンX座標指定
+// sy  = スクリーンY座標指定
+// cdz = カメラからの距離を3D座標系で指定(プラスがカメラの前方向)
+#deffunc fvstw array wp,double sx,double sy,double cdz
+	getpos HGOBJ_CAMERA,cpx,cpy,cpz
+	getang HGOBJ_CAMERA,crx,cry,crz
+	fvset wp,crx,-cry,crz
+	fvdir wp,(sx-whswx)*cdz*tcwx,(sy-whswy)*cdz*tcwy,-cdz
+	fvadd wp,cpx,cpy,cpz
+return
+
+//[---スクリーン座標からレイを飛ばすベクトルを取得---]
+//fvray rvec, sx, sy
+// rvec = レイのベクトル(rvec=vx,vy,vz)
+// sx  = スクリーンX座標指定
+// sy  = スクリーンY座標指定
+#deffunc fvray array rvec,double sx,double sy
+	getang HGOBJ_CAMERA,crx,cry,crz
+	fvset rvec,crx,-cry,crz
+	fvdir rvec,(sx-whswx)*tcwx,(sy-whswy)*tcwy,-1.0
+return
+
+//[---スクリーン座標からレイを飛ばしてワールドY座標が0になる時のワールドX,Z座標を取得---]
+//getRayPos wpx, wpy, wpz, sx, sy, gzero
+// wpx = 3DX座標を取得
+// wpy = 3DY座標を取得
+// wpz = 3DZ座標を取得
+// sx  = スクリーンX座標指定
+// sy  = スクリーンY座標指定
+// gzero  = ワールドY座標が0になる位置をずらす
+#define global getRayPos(%1,%2,%3,%4,%5,%6=0.0) _getRayPos %1,%2,%3,%4,%5,%6
+#deffunc _getRayPos var wpx,var wpy,var wpz,double sx,double sy,double gzero
+	fvray _rvec, sx, sy
+	getpos HGOBJ_CAMERA,cpx,cpy,cpz
+	if _rvec(1)<=0.0 {//_rvec(1)が0.0だと次の行で割り算に使えないのでdisに直接カメラに映る最大距離を代入（これは地面方向の傾きが0の時の対策）
+		dis=FarZ
+	}else{
+		dis=-(cpy-gzero)/_rvec(1)	//カメラの高さをレイのYで割るとY座標0までのカメラからの距離が出る
+	}
+	fvmul _rvec,dis,dis,dis	//レイの方向ベクトルに距離を掛ければワールド座標になる
+	fvadd _rvec,cpx,cpy,cpz	//カメラ座標を足してカメラを基準にした座標にする	(この二行は fvstw _rvec,sx,sy,dis に置き換ても同等の事が出来る)
+	
+	wpx=_rvec
+	wpy=_rvec(1)
+	wpz=_rvec(2)
+return dis
+
+
+
+//[---addmeshで作成したオブジェクト(OBJ_GROUNDを設定した物)に対してレイを飛ばして交点にオブジェクトを配置（連続でオブジェを移動させgetcolvecして最初にmin以内になった座標を取得）---]
+//setRayMeshObj  oid, sx, sy, max, min, NZ, FZ
+// oid = 交点に配置するオブジェトのID(OBJ_STANDが設定されてるオブジェクトが必要)
+// sx = スクリーンX座標(省略時mousex)
+// sy = スクリーンY座標(省略時mousey)
+// max = 一回で進む距離(省略時1.0)「大きくするとすり抜ける可能性が高くなる、小さいと処理回数が多くなる」
+// min = メッシュと接触したとする距離(省略時0.01)
+// NZ = 検索開始するカメラからの距離(省略時カメラのNearZ設定)
+// FZ = 検索終了するカメラからの距離(省略時カメラのFarZ設定)
+//帰り値：statに地面と衝突したかが返る「0=衝突なし、1=衝突あり」
+#define global setRayMeshObj(%1,%2=mousex,%3=mousey,%4=1.0,%5=0.01,%6=NearZ@mod_hgCnvRayCol,%7=FarZ@mod_hgCnvRayCol) _setRayMeshObj %1,%2,%3,%4,%5,%6,%7
+#deffunc _setRayMeshObj int oid,double sx,double sy,double max,double min,double NZ,double FZ
+	fvray rv,sx,sy
+	getpos HGOBJ_CAMERA,cpx,cpy,cpz
+	fvmul rv,max,max,max
+	setpos oid,cpx+NZ*dup_addx,cpy+NZ*dup_addy,cpz+NZ*dup_addz
+	selpos oid
+	objgetfv opos
+	meshhit=0
+	repeat int((FZ-NZ)/max)
+		fvadd opos,dup_addx,dup_addy,dup_addz	
+		objsetfv opos
+		getcolvec var1,var2,var3,oid,4
+
+		if var1 < dup_oposy {//地面の座標がオブジェクトより高かった
+			repeat 10
+				if  (dup_oposy-var1)<=min{break}//座標の誤差がminより小さいのでこの地面の高さで決定
+				fvsub opos,dup_addx,dup_addy,dup_addz	//誤差が大きいのえ一旦検索座標をカメラ方向に戻す
+				fvmul rv,0.1,0.1,0.1	//移動量を1/10に
+				repeat 10
+					fvadd opos,dup_addx,dup_addy,dup_addz
+					objsetfv opos
+					getcolvec var1,var2,var3,oid,4
+					if var1 <dup_oposy {break}
+				loop
+			loop
+			meshhit=1
+			break
+		}
+	loop	
+	objset1 1,0.0
+	getcolvec var1,var2,var3,oid,4
+	objset1 1,var1
+
+return meshhit
+
+
+//[---スクリーン座標からの直線状にあるオブジェクトのidを取得して指定したオブジェクトを交点に配置します---]
+//getRayObjID  oid, sx, sy, max, min, NZ, FZ
+// oid = 交点に配置するオブジェトのID「予め setcoli でグループ値を設定してください」
+// sx = スクリーンX座標(省略時mousex)
+// sy = スクリーンY座標(省略時mousey)
+// max = 一回で進む距離(省略時1.0)「大きくするとすり抜ける可能性が高くなる、小さいと処理回数が多くなる」
+// min = オブジェクトと接触したとする距離(省略時0.01)
+// NZ = 検索開始するカメラからの距離(省略時カメラのNearZ設定)
+// FZ = 検索終了するカメラからの距離(省略時カメラのFarZ設定)
+//返り値：statに衝突したオブジェクトIDが返る「-1=衝突なし」
+#define global getRayObjID(%1,%2=mousex,%3=mousey,%4=1.0,%5=0.01,%6=NearZ@mod_hgCnvRayCol,%7=FarZ@mod_hgCnvRayCol) _getRayObjID %1,%2,%3,%4,%5,%6,%7
+#deffunc _getRayObjID int oid,double sx,double sy,double max,double min,double NZ,double FZ
+	maxcnt=int(FZ/(max*5))
+	fvray rv,sx,sy
+	getpos HGOBJ_CAMERA,cpx,cpy,cpz
+	setpos oid,cpx,cpy,cpz
+	minxyz=min*min+min*min+min*min
+	_id=-1
+	repeat maxcnt
+	
+		addpos oid,dup_addx,dup_addy,dup_addz
+		getcoli _id,oid,1.0
+		if _id>=0 {
+  			getpos oid,opx1,opy1,opz1
+			getpos _id,opx2,opy2,opz2
+			opx2-opx1
+			opy2-opy1
+			opz2-opz1
+			if (opx2*opx2+opy2*opy2+opz2*opz2) > minxyz {
+
+			addpos oid,-dup_addx,-dup_addy,-dup_addz
+			fvmul rv,0.1,0.1,0.1	//移動量を1/10に
+			repeat 10
+				getcoli _id,oid,1.0
+				if _id>=0 {
+ 	 				getpos oid,opx1,opy1,opz1
+					getpos _id,opx2,opy2,opz2
+					opx2-opx1
+					opy2-opy1
+					opz2-opz1
+					if (opx2*opx2+opy2*opy2+opz2*opz2) < minxyz {break}
+				}
+				addpos oid,dup_addx,dup_addy,dup_addz
+			loop
+			if _id>=0 { break}
+			fvmul rv,10.0,10.0,10.0	//移動量を1/10に
+
+		} else{break} 
+		}
+	loop
+
+return _id
+
+
+
+//3Dオブジェクト座標をスクリーン座標に変換して指定座標に縦横の判定サイズ以内にあるオブジェクトIDを返す
+//getscboxobjid oid, sx, sy, exmode, group, hsx, hsy, max_range
+//oid	オブジェID
+//sx ,sy 	スクリーン座標
+//exmode, group 	findobjのパラメータ
+//hsx, hsy		縦横判定サイズの半分
+//max_range		判定Z距離
+#deffunc getscboxobjid var oid,double sx,double sy,int exmode,int group,double hsx,double hsy,double max_range
+	findobj exmode,group
+	oid=-1
+	var_z_bak=(max_range-NearZ)*(FFNZ/max_range)
+	hgdraw 6
+	repeat
+		nextobj valid
+		if valid<0{break}
+		getpos valid,x,y,z
+		hgcnvaxis var_x,var_y,var_z,x,y,z,0
+		if var_z<var_z_bak {
+			if absf(var_x-sx)<hsx/(TNZ/(1.0-var_z*NFZ)) {
+				if absf(var_y-sy)<hsy/(TNZ/(1.0-var_z*NFZ) ) {var_z_bak=var_z:oid=valid}
+			}
+		}
+	loop
+return 
+
+//「基本的にgetscboxobjidと同じだが判定サイズはgetcolvecで取得（modelcols のp5を0にしてコリジョンスケールを設定）」
+//getscobjid oid, sx, sy, exmode, group, max_range
+//oid	オブジェID
+//sx ,sy 	スクリーン座標
+//exmode, group 	findobjのパラメータ
+//max_range		判定Z距離
+#deffunc getscobjid var oid,double sx,double sy,int exmode,int group,double max_range
+	findobj exmode,group
+	oid=-1
+	var_z_bak=(max_range-NearZ)*(FFNZ/max_range)
+	hgdraw 6
+	repeat
+		nextobj valid
+		if valid<0{break}
+		getpos valid,x,y,z
+		hgcnvaxis var_x,var_y,var_z,x,y,z,0
+		getcolvec var1,var2,var3,valid,2
+
+		if var_z<var_z_bak {
+			if abs(var_x-sx)<var1/(TNZ/(1.0-var_z*NFZ)) {
+				if abs(var_y-sy)<var2/(TNZ/(1.0-var_z*NFZ))  {var_z_bak=var_z:oid=valid}
+			}
+		}
+	loop
+
+return
+
+
+//[---スクリーン座標からレイを飛ばしてオブジェクトの球と接触判定、交点取得、ドラッグする---]
+//getSphereRayColl oid, ip, msize, sx, sy, f, exmode, group, mode
+// oid = レイと接触したオブジェID（出力）[接触が無ければ-1]
+// vertex = レイと接触したxyz座標（出力）[vertex=x,y,z	ドラッグ中は接触した部分を掴んでる感じになる]
+// msize = 球のモデルサイズ（入力）[これにオブジェクトスケールを掛けて利用]
+// sx  = スクリーンX座標指定（入力）
+// sy  = スクリーンY座標指定（入力）
+// f  = 判定用キー（入力）[0以外なら接触判定をしてドラッグ、0なら判定ドラッグ解除]
+// exmode  = 検索を除外するモード（入力）[findobjの解説を参照]
+// group  = 検索対象コリジョングループ値（入力）[findobjの解説を参照]
+// mode  = 検索モード（入力）[0=接触判定をしてドラッグ、1=接触判定のみ]
+//返り値1；statに接触したオブジェクトの数が返る「配列変数 hit_Bound_idlist に接触したオブジェクトID、hit_Bound_timelist に接触までの時間」
+//返り値2；refdvalにカメラから交点のZ距離が返る
+#define global getSphereRayColl(%1,%2,%3,%4=mousex,%5=mousey,%6=1,%7=0,%8,%9=1) fvray temp_rvec, %4,%5:selcpos:objgetfv _rp@mod_hgCnvRayCol:_getObjRayColl %1,%2,%3,temp_rvec,_rp@mod_hgCnvRayCol,%6,%7,%8,(%9)&1,0
+
+//[---スクリーン座標からレイを飛ばしてオブジェクトのBOXと接触判定、交点取得、ドラッグする---]
+//getBoxRayColl oid, spxyz, cty, sx, sy, f, exmode, group, mode
+// oid = レイと接触したオブジェID（出力）[接触が無ければ-1]
+// spxyz = BOXのXYZサイズ(3要素実数配列入力)、レイと接触したxyz座標（出力）[spxyz=x,y,z	ドラッグ中は接触した部分を掴んでる感じになる]
+// cty  = BOXの判定基点Y座標（入力）[0.0で足元が基点、spxyz(1)/2 にすれば中央が基点になる]
+// sx  = スクリーンX座標指定（入力）
+// sy  = スクリーンY座標指定（入力）
+// f  = 判定用キー（入力）[0以外なら接触判定をしてドラッグ、0なら判定ドラッグ解除]
+// exmode  = 検索を除外するモード（入力）[findobjの解説を参照]
+// group  = 検索対象コリジョングループ値（入力）[findobjの解説を参照]
+// mode  = 検索モード（入力）[0=接触判定をしてドラッグ、1=接触判定のみ]
+//返り値1；statに接触したオブジェクトの数が返る「配列変数 hit_Bound_idlist に接触したオブジェクトID、hit_Bound_timelist に接触までの時間、hit_BoxPolygon_cntlist にどのボリゴンに接触したか返る」
+//返り値2；refdvalにカメラから交点のZ距離が返る
+#define global getBoxRayColl(%1,%2,%3,%4=mousex,%5=mousey,%6=1,%7=0,%8,%9=1) fvray temp_rvec, %4,%5:selcpos:objgetfv _rp@mod_hgCnvRayCol:_getObjRayColl %1,%2,%3,temp_rvec,_rp@mod_hgCnvRayCol,%6,%7,%8,(%9)&1,1
+
+//[---基点座標からレイを飛ばしてオブジェクトの球との交点取得---]
+//SphereBoundProbe oid, spxyz, cty, rp, rvec, exmode, group, mode
+// oid = レイと接触したオブジェID（出力）[接触が無ければ-1]
+// vertex = レイと接触したxyz座標（出力）[vertex=x,y,z	]
+// msize = 球のモデルサイズ（入力）[これにオブジェクトスケールを掛けて利用]
+// rp  = レイの基点座標（入力）[rp=x,y,z	]
+// rvec  = レイベクトル（入力）[rvec=x,y,z	]
+// exmode  = 検索を除外するモード（入力）[findobjの解説を参照]
+// group  = 検索対象コリジョングループ値（入力）[findobjの解説を参照]
+// mode  = 検索モード（入力）[0=交点をrpに返す、1=交点を返さない]
+//返り値1；statに接触したオブジェクトの数が返る「配列変数 hit_Bound_idlist に接触したオブジェクトID、hit_Bound_timelist に接触までの時間」
+//返り値2；refdvalにrpから交点のZ距離が返る
+#define global SphereBoundProbe(%1,%2,%3,%4,%5,%6=0,%7,%8=0) _getObjRayColl %1,%2,%3,%5,%4,1,%6,%7,((%8)*2)| 1,0
+
+//[---基点座標からレイを飛ばしてオブジェクトのボックスとの交点取得---]
+//BoxBoundProbe oid, spxyz, cty, rp, rvec, f, exmode, group, mode
+// oid = レイと接触したオブジェID（出力）[接触が無ければ-1]
+// spxyz = BOXのXYZサイズ(3要素実数配列入力)、レイと接触したxyz座標（出力）[spxyz=x,y,z	]
+// cty  = BOXの判定基点Y座標（入力）[0.0で足元が基点、spxyz(1)/2 にすれば中央が基点になる]
+// rp  = レイの基点座標（入力）[rp=x,y,z	]
+// rvec  = レイベクトル（入力）[rvec=x,y,z	]
+// exmode  = 検索を除外するモード（入力）[findobjの解説を参照]
+// group  = 検索対象コリジョングループ値（入力）[findobjの解説を参照]
+// mode  = 検索モード（入力）[0=交点をspxyzに返す、1=交点を返さない]
+//返り値1；statに接触したオブジェクトの数が返る「配列変数 hit_Bound_idlist に接触したオブジェクトID、hit_Bound_timelist に接触までの時間、hit_BoxPolygon_cntlistにどのボリゴンに接触したか返る」
+//返り値2；refdvalにrpから交点のZ距離が返る
+#define global BoxBoundProbe(%1,%2,%3,%4,%5,%6=0,%7,%8=0) _getObjRayColl %1,%2,%3,%5,%4,1,%6,%7,((%8)*2)| 1,1
+
+#define global hit_Bound_idlist hitBound_idlist@mod_hgCnvRayCol
+#define global hit_Bound_timelist hitBound_timelist@mod_hgCnvRayCol
+#define global hit_BoxPolygon_cntlist polcnt_list@mod_hgCnvRayCol
+#define global hit_BoxPolygonNo hit_polcnt@mod_hgCnvRayCol
+
+
+//[---BoxBoundProbe,getBoxRayColl,RayBoxBoundProbeで衝突したポリゴンナンバーから面法線を取得する---]
+//getBoxNormalVec  oid, poly_no, nm
+// oid = オブジェクトID(入力)
+// poly_no = ポリゴンナンバー(入力)[hit_BoxPolygonNoで参照出来るナンバーを使用]
+// nm  = 面法線((3要素実数配列出力)
+#deffunc getBoxNormalVec int oid,int poly_no,array nm
+	getscale oid,obj_sclx,obj_scly,obj_sclz
+	getang oid,_Angx, _Angy, _Angz
+	fvset nm,_Angx, -_Angy, _Angz
+	fvdir nm,box_mn(poly_no*3)/obj_sclx,box_mn(poly_no*3+1)/obj_scly,box_mn(poly_no*3+2)/obj_sclz
+	fvunit nm
+return
+
+#deffunc _getObjRayColl var oid,array vertex,double msize,array rvec,array rp,int f,int exmode,int group,int mode,int boxsph
+
+	if f {
+
+		if (tf=0) or (mode&1) { 
+			tf=0
+			getpos HGOBJ_CAMERA,cx_bak,cy_bak,cz_bak
+			cx=rp
+			cy=rp(1)
+			cz=rp(2)
+			setfloat4 RayPosition_f,cx,cy,cz//ベクトルdoubleをfloatにして配列に入れる
+
+			setfloat4 RayDirection_f,rvec(0),rvec(1),rvec(2)	
+
+			fvset inrv,rvec(0),rvec(1),rvec(2)
+			fvinner inrv,rvec(0),rvec(1),rvec(2)
+			if boxsph {
+				bbsx=vertex
+				bbsy=vertex(1)
+				bbsz=vertex(2)
+				bosrx=bbsx/2.0
+				boslx=-bosrx
+
+				bosdy=msize
+				bosuy=-(bbsy-msize)
+
+				bosfz=bbsz/2.0
+				bosbz=-bosfz
+
+				bbsy_c=-(bbsy/2.0-msize)
+				_bbsy=bbsy-bbsy_c
+				_msize=sqrt(bbsx*bbsx+_bbsy*_bbsy+bbsz*bbsz)
+
+	
+			}else{
+				_msize=msize
+			}
+
+					hit_cnt=0
+			fvset vertex,0.0,0.0,0.0
+
+			findobj exmode,group
+			sphc@=0:boxc@=0
+			ttim=FarZ
+			
+			repeat
+				nextobj obj_id
+				if obj_id<0 {
+					if tf {
+						if (mode&2){grsb_oid=oid:break}
+
+						setpos HGOBJ_CAMERA,cx,cy,cz
+
+						hgdraw 6	//前回からカメラ操作されてる場合hgcnvaxisを使用する時に一度hgdrawする必要がある
+						vertex=cx +rvec(0) * ttim ,cy +rvec(1) * ttim ,cz +rvec(2) * ttim
+						hgcnvaxis tdx,tdy,tdz,vertex,vertex(1),vertex(2),2
+						setpos HGOBJ_CAMERA,cx_bak,cy_bak,cz_bak
+
+						selpos oid
+						objgetfv difxyz
+						fvsub difxyz,vertex,vertex(1),vertex(2)	//交点からオブジェクトまでの差分
+						
+						grsb_oid=oid
+					}else{oid=-1}
+					break
+				}
+				getpos obj_id,ox,oy,oz
+				getscale obj_id,obj_sclx,obj_scly,obj_sclz
+				if boxsph {	
+
+  			 		if obj_sclx*bbsx>obj_scly*bbsy {
+						if obj_sclz*bbsz>obj_sclx*bbsx {hsize=0.75*obj_sclz*bbsz	}else{hsize=0.75*obj_sclx*bbsx}
+					}else{
+						if obj_sclz*bbsz>obj_scly*bbsy {hsize=0.75*obj_sclz*bbsz	}else{hsize=0.75*obj_scly*bbsy}
+					} 
+				}else{
+					hsize=0.5*obj_scly*_msize	//球の半径
+
+				}		
+				setVec3 SphereCenter_f,ox,oy,oz
+
+
+				//光線が球の境界ボックスに当たるかどうかを判定
+				if D3DXSphereBoundProbe(SphereCenter_f,hsize,RayPosition_f,RayDirection_f) {//当った
+					sphc@++
+					if boxsph {	
+						getang obj_id,_Angx, _Angy, _Angz
+						difx=(cx-ox)
+						dify=(cy-oy)
+						difz=(cz-oz)
+						fvset _rvec_bak,rvec(0),rvec(1),rvec(2)	
+
+						//オブジェクトの回転に合わせて差分座標とレイベクトルを回転
+						LocalRotRay difx,dify,difz,_Angx, _Angy, _Angz,_rvec_bak
+						
+						setVec3 RayDirection2_f,_rvec_bak(0),_rvec_bak(1),_rvec_bak(2)	
+						setVec3 RayPosition2_f,difx,dify,difz
+
+						setVec3 pMin_f,boslx*obj_sclx,bosuy*obj_scly,bosbz*obj_sclz
+						setVec3 pMax_f,bosrx*obj_sclx,bosdy*obj_scly,bosfz*obj_sclz
+
+						//光線がBOXの境界ボックスに当たるかどうかを判定
+						if D3DXBoxBoundProbe(pMin_f,pMax_f,RayPosition2_f,RayDirection2_f) {//当った
+							hitBound_idlist(hit_cnt)=obj_id
+							if (mode&2)=0 {
+								obj_sclx*bbsx
+								obj_scly*bbsy
+								obj_sclz*bbsz
+								boxc@++
+								//setVec3 RayPosition2_f,difx/obj_sclx,(dify)/obj_scly,difz/obj_sclz
+								setVec3 RayPosition2_f,difx/obj_sclx,(dify/obj_scly-bbsy_c/bbsy),difz/obj_sclz
+								setVec3 RayDirection2_f,_rvec_bak(0)/obj_sclx,_rvec_bak(1)/obj_scly,_rvec_bak(2)/obj_sclz
+								ttim2=FarZ
+								
+								repeat 12
+									dup dup_bbox_f,bbox_f(cnt*9)
+									D3DXIntersectTri dup_bbox_f,dup_bbox_f(3),dup_bbox_f(6),RayPosition2_f,RayDirection2_f,f_U,f_V,f_Dist
+									if stat {
+										tim=ftd(f_Dist)
+										if (ttim2 > tim) {
+											f_U_=f_U
+											f_V_=f_V
+											polcnt_list(hit_cnt)=cnt
+											ttim2=tim
+										}
+									}
+								loop
+								
+								hitBound_timelist(hit_cnt)=ttim2
+								
+								if ttim2<ttim {
+									tf=1	//接触したフラグ
+									f_UV=f_U_,f_V_
+									oid=obj_id
+									ttim=ttim2
+									hit_polcnt=polcnt_list(hit_cnt)
+								}
+								hit_cnt++
+							}else{
+								tim=sqrt(difx*difx+dify*dify+difz*difz)
+								hitBound_timelist(hit_cnt)=tim
+								hit_cnt++
+								if ttim>tim {
+									tf=1	//接触したフラグ
+									oid=obj_id
+									ttim=tim
+									hit_polcnt=-1
+								}
+		
+
+							}
+
+					
+						}
+						continue
+					}
+
+					hitBound_idlist(hit_cnt)=obj_id
+					cox=cx-ox
+					coy=cy-oy
+					coz=cz-oz
+
+					fvset inrvco,rvec(0),rvec(1),rvec(2)
+					fvinner inrvco,cox,coy,coz
+
+					fvset inco,cox,coy,coz
+					fvinner inco,cox,coy,coz
+					
+					inco-=hsize * hsize
+					tim = ( -inrvco - sqrt( inrvco * inrvco - inrv * inco) ) / inrv	//接触までの時間
+					if (ttim > tim) {
+						ttim=tim
+						tf=1	//接触したフラグ
+						oid=obj_id
+					}
+					hitBound_timelist(hit_cnt)=tim
+					hit_cnt++
+				}
+			loop
+		}else{
+			fvstw vertex, sx, sy, -tdz
+			setpos grsb_tid,vertex+difxyz,vertex(1)+difxyz(1),vertex(2)+difxyz(2)	//差分を加算
+			oid=grsb_tid
+		}
+	}else{
+		fvset vertex,0.0,0.0,0.0
+		tf=0
+		oid=-1
+		tdz=0.0
+	}
+		mref _stat,64
+_stat=hit_cnt
+return tdz
+
+
+//setBoundingBoxで設定したデータを取得する関数型マクロ
+// 変数 = getBBMin( ObjID , 0～2 )	//x=0 y=1 z=2 
+#define global ctype getBBMin(%1,%2) bbox_dat_list@mod_hgCnvRayCol((%2),%1)
+#define global ctype getBBMax(%1,%2) bbox_dat_list@mod_hgCnvRayCol((%2)+3,%1)
+#define global ctype getBBSize(%1,%2) bbox_dat_list@mod_hgCnvRayCol((%2)+6,%1)
+#define global ctype getBBCenter(%1,%2) bbox_dat_list@mod_hgCnvRayCol((%2)+9,%1)
+
+
+//[---オブジェIDを指定して判定用バウンディングボックスを設定する---]
+//setBoundingBox  oid, bbminx, bbminy, bbminz, bbmaxx, bbmaxy, bbmaxz
+// oid = バウンディングボックスを設定するオブジェID（入力）
+// bbminx = ボックスの左上後X (入力)
+// bbminy = ボックスの左上後Y (入力)
+// bbminz = ボックスの左上後Z (入力)
+// bbmaxx = ボックスの右下前X（入力）
+// bbmaxy = ボックスの右下前Y（入力）
+// bbmaxz = ボックスの右下前Z（入力）
+//「bbminyとbbmaxyを省略か0.0にすると設定削除」
+#define global setBoundingBox(%1,%2=0.0,%3=0.0,%4=0.0,%5=0.0,%6=0.0,%7=0.0) _setBoundingBox %1,%2,%3,%4,%5,%6,%7
+#deffunc _setBoundingBox int oid,double bbminx,double bbminy,double bbminz,double bbmaxx,double bbmaxy,double bbmaxz
+
+	if oid<0 {return -1}
+	if vartype(bbox_dat_list)=4 {
+		fvset bbGroundNormal,0.0,0.0,0.0
+		fvset ceiling_Normal,0.0,0.0,0.0
+		fvset ceiling_Normal_Under,0.0,0.0,0.0
+		dim pMin_f,4:dim pMax_f,4:ddim bbox_dat_list,16,(oid+1):dim bbox_dat_f_list,6,(oid+1)
+
+		
+		reglight exlight		; 追加のライト
+		setscale exlight, 0, 32, 128	; ライト色を設定(通常)
+		setdir exlight, 0, 0, 0	; アンビエント色を設定
+		reglight exlight(1)		; 追加のライト
+		setscale exlight(1), 0, 128, 32	; ライト色を設定(境界球接触)
+		setdir exlight(1), 0, 0, 0	; アンビエント色を設定
+		reglight exlight(2)		; 追加のライト
+		setscale exlight(2), 160, 0, 0	; ライト色を設定(地上)
+		setdir exlight(2), 0, 0, 0	; アンビエント色を設定
+		reglight exlight(3)		; 追加のライト
+		setscale exlight(3), 80, 0, 80	; ライト色を設定(天井)
+		setdir exlight(3), 0, 0, 0	; アンビエント色を設定
+
+		reglight exlight(4)		; 追加のライト
+		setscale exlight(4), 80, 80, 0	; ライト色を設定(壁)
+		setdir exlight(4), 0, 0, 0	; アンビエント色を設定
+		
+		reglight exlight(5)		; 追加のライト
+		setscale exlight(5), 240, 80, 0	; ライト色を設定(壁+地上)
+		setdir exlight(5), 0, 0, 0	; アンビエント色を設定
+
+			reglight exlight(6)		; 追加のライト
+		setscale exlight(6), 240, 0, 80	; ライト色を設定(地上)
+		setdir exlight(6), 0, 0, 0	; アンビエント色を設定
+	
+	}
+	if bbminy ! 0.0 or bbmaxy ! 0.0 {bbox_dat_f(oid)=1}else{
+		bbox_dat_f(oid)+0
+		if bbox_dat_f(oid) { 
+			delobj boid_debug(oid)
+			boid_debug(oid)=0
+			bbox_dat_f(oid)=0
+		}
+		return 0
+	}
+	bbox_dat_list(0,oid)++
+	dup dup_bbox_dat,bbox_dat_list(0,oid)
+	dup_bbox_dat(0)=bbminx,bbminy,bbminz,bbmaxx,bbmaxy,bbmaxz,bbmaxx-bbminx,bbmaxy-bbminy,bbmaxz-bbminz
+	dup_bbox_dat(9)=dup_bbox_dat(6)/2.0-bbmaxx,dup_bbox_dat(7)/2.0-bbmaxy,dup_bbox_dat(8)/2.0-bbmaxz
+	dup_bbox_dat(12)=sqrt(dup_bbox_dat(6)*dup_bbox_dat(6)+dup_bbox_dat(7)*dup_bbox_dat(7)+dup_bbox_dat(8)*dup_bbox_dat(8))/2.0
+
+	setVec3 pMin_f,bbminx,bbminy,bbminz
+	setVec3 pMax_f,bbmaxx,bbmaxy,bbmaxz
+	memcpy bbox_dat_f_list(0,oid),pMin_f,12
+	memcpy bbox_dat_f_list(3,oid),pMax_f,12
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&16)=0
+	dup dup_boid_debug,boid_debug(oid)
+	if dup_boid_debug=0 {
+		regobj dup_boid_debug, bmid_debug,OBJ_LATE	
+	}
+
+	dup dup_getBBSize,getBBSize(oid,0)
+	dup dup_getBBCenter,getBBCenter(oid,0)
+	//setscale HGOBJ_LIGHT, 255, 0, 0	; ライト色を設定
+	objlight dup_boid_debug, exlight
+	setscale dup_boid_debug,dup_getBBSize,dup_getBBSize(1),dup_getBBSize(2)
+	setefx dup_boid_debug,100,0.0,0.0
+	getpos oid,bbpx,bbpy,bbpz
+
+	selang oid
+	objgetfv fv_debug
+
+	selang dup_boid_debug
+	objsetfv fv_debug
+	fv_debug(1)*-1.0
+
+	fvdir fv_debug,-dup_getBBCenter,-dup_getBBCenter(1),-dup_getBBCenter(2)
+	selpos dup_boid_debug
+
+	objsetf3 bbpx,bbpy,bbpz
+	objaddfv fv_debug
+
+	#endif
+#endif
+
+return 0
+
+
+//[---下のマクロはgetMovBoundingBoxCol使用後に地上面の法線が代入される配列---]
+#define global ArrBBGroundNormal bbGroundNormal@mod_hgCnvRayCol
+
+//[---下のマクロはgetMovBoundingBoxCol使用後に天井面の法線が代入される配列---]
+#define global ArrBBCeilingNormal ceiling_Normal@mod_hgCnvRayCol
+
+
+
+//[---setBoundingBoxで設定したオブジェクトにレイを飛ばして衝突した場合障害物として処理---]
+//getMovBoundingBoxCol oid, Posfeetx, Posfeety, Posfeetz, MoveVec, Step, tall, exmode, group, poly_no, gf
+// oid = 衝突したオブジェクトIDリスト(衝突が無ければ-1を出力、判定するオブジェIDリスト入力)「oid=下のオブジェ,上のオブジェ,押し出しのオブジェ,押し出された先で衝突したオブジェ」
+// Posfeetx = 足元の位置X座標(入力)「キャラの足元座標入力」
+// Posfeety = 足元の位置Y座標(入力)「キャラの足元座標入力」
+// Posfeetz = 足元の位置Z座標(入力)「キャラの足元座標入力」
+// MoveVec = 移動ベクトル(3要素配列入出力)「XYZの移動量、衝突した場合は押し出された位置又は、交点までの移動量を出力」
+// Step = 壁と見なさない高さ(入力)「壁判定時にPosfeety-Stepの位置を判定（急斜面の一回で登れる高さにもなる）」
+// tall = キャラの高さ(入力)「地面判定時にPosfeety-tallから下方向を判定する」
+// exmode  = 検索を除外するモード（入力）[findobjの解説を参照、-1にすると前回境界球検索にヒットしたオブジェクトか、oidで指定された物が判定される]
+// group  = 検索対象コリジョングループ値（入力）[findobjの解説を参照、exmodeが-1の時に0にすると前回のを再利用、1以上でoid内に指定されたIDリストを判定]
+// poly_no = どの面に当たったかの番号リスト(衝突が無ければ-1を出力)「上の順で交差したポリナンバーが返る」
+// gf = 地面に接地してた and 接地したかのフラグ(入出力)「0=空中、1=接地		このフラグは斜面を下る時に浮かないように処理するのに使われる」
+//返り値1：statに判定結果が返る「0=衝突なし,1=接地,2=天井に衝突,3=天地に挟まれた,8=何らかの事情でXZ座標の移動を停止
+//			16=壁に衝突し押し出された,32=押し出された先でも壁に衝突した(交点で停止)、64=壁以外の斜面に衝突(交点で停止)」
+//返り値2：下にバウンディングボックスが有ればrefdvalに地面のY座標が返る
+//仕様：Terrainデータと重なってる事は考慮してません。ただ仕組み上角度が90度以上の重なりは問題ないと思う・・・
+//		上下にボックスとTerrainがあって徐々に狭くなるような配置だと嵌ったり潜ったりします。
+#deffunc getMovBoundingBoxCol array oid,double Posfeetx,double Posfeety,double Posfeetz,array MoveVec,double Step,double tall,int exmode,int group,array poly_no,var gf
+	oid_Ground_f=-1:oid_Ground_b=-1:oid_wall_1=-1:oid_wall_2=-1
+	oid_Ground_polcnt_f=-1:oid_Ground_polcnt_b=-1:oid_wall_polcnt_1=-1:oid_wall_polcnt_2=-1
+	if exmode>=0{idcnt=0}
+	mbbc_Sticky=Sticky*gf
+	up_f=MoveVec(1)<0.0
+	_dist=sqrt(MoveVec*MoveVec+MoveVec(2)*MoveVec(2))
+	if _dist>0.0 {
+		if exmode>=0 {
+			_dist+BBoxGroundRange
+			fvset _MoveVec,MoveVec, absf(MoveVec(1))+BBoxGroundRange+mbbc_Sticky, MoveVec(2)
+			fvunit _MoveVec
+			gosub *_SphereBoundProbe
+		}else{
+			if group>0{
+				idcnt=group
+				idlist(idcnt)+0
+				memcpy idlist,oid,idcnt*4
+			}
+		}
+		fvset _rpxyz,Posfeetx, Posfeety-Step+Gap, Posfeetz
+
+		gosub *_BoundingBoxWallCol
+		wall_stat=stat
+	}else{
+		wall_stat=0
+		if exmode>=0 {
+
+			fvset _rpxyz,Posfeetx, Posfeety+MoveVec(1)-tall-Step, Posfeetz
+			fvset _MoveVec,MoveVec, absf(MoveVec(1))+BBoxGroundRange+mbbc_Sticky, MoveVec(2)
+			fvunit _MoveVec
+			_dist=sqrt(_MoveVec*_MoveVec+_MoveVec(1)*_MoveVec(1)+_MoveVec(2)*_MoveVec(2))+BBoxGroundRange
+			_dist2=_dist
+
+			gosub *_SphereBoundProbe
+		}else{
+			if group>0{
+				idcnt=group
+				idlist(idcnt)+0
+				memcpy idlist,oid,idcnt*4
+			}
+		}
+	}
+
+
+if up_f {tall_up=tall+Step//+Gap
+		fvset _rpxyz,Posfeetx, Posfeety-tall_up, Posfeetz
+		fvadd _rpxyz,MoveVec, MoveVec(1), MoveVec(2)
+		
+		fvset MoveVec2,0.0,MoveVec(1),0.0
+		fvset _MoveVec,0.0, 1.000,0.0
+
+		fvunit _MoveVec
+}else{
+	tall_up=tall+Step+Gap
+		fvset _rpxyz,Posfeetx, Posfeety-tall_up, Posfeetz
+		fvadd _rpxyz,MoveVec, MoveVec(1)*0, MoveVec(2)
+		
+		fvset MoveVec2,0.0,MoveVec(1),0.0
+		fvset _MoveVec,0.0, 1.000,0.0
+
+		fvunit _MoveVec
+	}
+		_dist=sqrt(MoveVec2*MoveVec2+MoveVec2(1)*MoveVec2(1)+MoveVec2(2)*MoveVec2(2))+tall_up+mbbc_Sticky
+		_dist2=_dist
+
+
+	gosub *_BoundingBoxGroundCol
+	st=stat
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&16)=0
+	if oid_Ground_f>=0{
+		if oid_Ground_f=oid_wall_1 or oid_Ground_f=oid_wall_2{
+			objlight boid_debug(oid_Ground_f),exlight(5)
+		}else{
+			objlight boid_debug(oid_Ground_f), exlight(2)
+		}
+		setwork boid_debug(oid_Ground_f),2.0,0.0,0.0
+	}
+	if oid_Ground_b>=0{
+		if oid_Ground_b=oid_wall_1 or oid_Ground_b=oid_wall_2{
+			objlight boid_debug(oid_Ground_b),exlight(6)
+		}else{
+		
+			objlight boid_debug(oid_Ground_b), exlight(3)
+
+		}
+		setwork boid_debug(oid_Ground_b),2.0,0.0,0.0
+
+	}
+	#endif
+#endif
+	
+	oid=oid_Ground_f,oid_Ground_b,oid_wall_1,oid_wall_2
+	poly_no=oid_Ground_polcnt_f,oid_Ground_polcnt_b,oid_wall_polcnt_1,oid_wall_polcnt_2
+	if oid_Ground_f<0 {
+		Ground_Posy=999999.999
+	}
+	
+	mref _stat,64
+	if (st&8) {_stat=st}else{_stat=st | wall_stat}
+return Ground_Posy
+
+
+
+
+*_Re_BoundingBoxGroundCol
+
+	gpy=BBoxGroundRange
+	sw_dist=BBoxGroundRange
+	sw_dist2=sw_dist
+	_sw_dist2=sw_dist
+	gpy=sw_dist	
+	sw_b_dist2=0.0
+	if oid_Ground_b>=0{
+		if re_up{
+
+		Re_MoveVec_y=MoveVec(1)
+		}else{
+		Re_MoveVec_y=0.0
+		}
+	}else{
+
+		Re_MoveVec_y=0.0
+	}
+	fvset _rpxyz,Posfeetx, Posfeety-tall+Re_MoveVec_y, Posfeetz
+
+	fvset MoveVec2,0.0,tall+absf(MoveVec(1))+mbbc_Sticky,0.0
+	fvset _MoveVec,0.0, 1.000,0.0
+
+		repeat idcnt
+		if idlist(cnt)<0 {continue} 
+			RayBoxBoundProbe  idlist(cnt), _rpxyz, _MoveVec,sw_dist,MoveVec2,Normal,1,1
+
+		if stat&7{
+			if (stat&1){
+					if sw_dist<sw_dist2 {
+
+
+						if sw_dist>tall {
+							if sw_dist<gpy {
+								sw_dist2=sw_dist
+								oid_Ground_f=idlist(cnt)
+								oid_Ground_polcnt_f=hit_polcnt
+
+								fvset bbGroundNormal,Normal,Normal(1),Normal(2)
+								Ground_Posy=Posfeety+Re_MoveVec_y+sw_dist2-tall
+								gpy=sw_dist2
+							}
+						}
+						
+					}else{
+						if stat&4{
+							if refdval<gpy {
+								if refdval>tall {
+									oid_Ground_f=idlist(cnt)
+									oid_Ground_polcnt_f=hit_polcnt
+									Ground_Posy=Posfeety+Re_MoveVec_y+refdval-tall
+									fvset bbGroundNormal,Normal,Normal(1),Normal(2)
+									gpy=refdval
+								}
+							}
+						}
+					}
+
+				}
+			
+			if (stat&2){
+
+				if b_ttim2>sw_b_dist2 {
+					if b_ttim2<tall_up {
+						bhit++
+						sw_b_dist2=b_ttim2
+						oid_Ground_b=idlist(cnt)
+						oid_Ground_b_polcnt=b_hit_polcnt
+						ceiling_Normal=b_Norm,b_Norm(1),b_Norm(2)
+					}
+				} 
+			}
+		}
+			sw_dist=_sw_dist2
+		loop
+		if bhit {
+			bhit=0
+			re_up=0
+			b_dist2=sw_b_dist2
+		}
+
+		if sw_dist2=BBoxGroundRange {return 0}
+		_dist2=sw_dist2+Re_MoveVec_y+Step
+
+return 1
+
+
+*_SphereBoundProbe	
+	_dist2=_dist
+	setVec3 RayPosition_f,Posfeetx, Posfeety-(tall+mbbc_Sticky)/2.0, Posfeetz//ベクトルdoubleをfloatにして配列に入れる
+	setVec3 RayDirection_f,_MoveVec(0),_MoveVec(1),_MoveVec(2)
+	fvset inrv,_MoveVec(0),_MoveVec(1),_MoveVec(2)
+	fvinner inrv,_MoveVec(0),_MoveVec(1),_MoveVec(2)
+
+	findobj exmode,group
+	tall_dist=tall/2.0+mbbc_Sticky	//tall/2.0だと検索抜けが出るかも・・・
+	repeat
+		nextobj val
+		if val<0 {break}
+		getpos val,ox,oy,oz
+		getang val,oax,oay,oaz
+		fvset cen,oax,-oay,oaz
+		dup dup_bboxdat,bbox_dat_list(0,val)
+
+		fvdir cen,dup_bboxdat(9),dup_bboxdat(10),dup_bboxdat(11)
+		ox-cen:oy-cen(1):oz-cen(2)
+
+		setVec3 SphereCenter_f,ox,oy,oz
+		hsize=dup_bboxdat(12)+tall_dist
+		if D3DXSphereBoundProbe(SphereCenter_f,hsize,RayPosition_f,RayDirection_f) {//当った
+			cox=Posfeetx-ox
+			coy=Posfeety-oy
+			coz=Posfeetz-oz
+			fvset inrvco,_MoveVec(0),_MoveVec(1),_MoveVec(2)
+			fvinner inrvco,cox,coy,coz
+			fvset inco,cox,coy,coz
+			fvinner inco,cox,coy,coz
+			inco-=hsize * hsize
+			tim = ( -inrvco - sqrt( inrvco * inrvco - inrv * inco) ) / inrv	//接触までの時間
+
+			if tim<=_dist {
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&16)=0
+		objlight boid_debug(val), exlight(1)
+		setwork boid_debug(val),2.0,0.0,0.0
+	#endif
+#endif
+
+				
+				idlist(idcnt)=val
+				idcnt++
+			}
+		}
+	loop
+return
+
+
+*_BoundingBoxWallCol
+	MoveVec_y=MoveVec(1)
+	_dist=sqrt(MoveVec*MoveVec+MoveVec(2)*MoveVec(2))
+	fvset _MoveVec,MoveVec, 0.0, MoveVec(2)
+	fvunit _MoveVec
+	_dist2=_dist
+	_dist2_=_dist
+	wall_tes=0
+	repeat idcnt
+			if idlist(cnt)<0 {continue} 
+
+		RayBoxBoundProbe  idlist(cnt), _rpxyz,_MoveVec ,_dist,MoveVec_bak,Normal,3,0
+		if stat=1 {
+			if _dist<_dist2 {		
+
+				fvset MoveVec,MoveVec_bak,MoveVec_bak(1),MoveVec_bak(2)
+				_dist2=_dist
+				oid_wall_1=idlist(cnt)
+				oid_wall_polcnt_1=hit_polcnt
+				wall_tes=((Normal(1)>0.0)*8) |  ((absf(Normal(1))>=WallVerticalRange)*64)
+			}
+		}
+	loop
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&16)=0
+	if oid_wall_1>=0{
+		objlight boid_debug(oid_wall_1), exlight(4)
+				setwork boid_debug(oid_wall_1),2.0,0.0,0.0
+
+	}
+	#endif
+#endif
+
+	if oid_wall_1<0   or wall_tes   {:MoveVec(1)=MoveVec_y:return wall_tes}
+
+
+	_dist=sqrt(MoveVec*MoveVec+MoveVec(1)*MoveVec(1)*0+MoveVec(2)*MoveVec(2))
+	
+	if _dist=0.0  {MoveVec(1)=MoveVec_y:return 16}
+	_dist2=_dist
+	_dist2_=_dist
+
+	fvset _MoveVec,MoveVec, MoveVec(1)*0, MoveVec(2)
+	fvunit _MoveVec
+	wall_tes=0
+	repeat idcnt
+			if idlist(cnt)<0 {continue} 
+
+		RayBoxBoundProbe  idlist(cnt), _rpxyz, _MoveVec,_dist,MoveVec_bak,Normal,2,0
+		if stat=1 {
+			if _dist<_dist2 {
+				fvset MoveVec,MoveVec_bak,MoveVec_bak(1),MoveVec_bak(2)
+				_dist2=_dist
+				oid_wall_2=idlist(cnt)
+				oid_wall_polcnt_2=hit_polcnt
+				wall_tes=((Normal(1)>0.0)*8) |  ((absf(Normal(1))>=WallVerticalRange)*64)
+
+			}
+		}
+
+	loop
+
+	MoveVec(1)=MoveVec_y
+
+	if oid_wall_2>=0 {
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&16)=0
+		objlight boid_debug(oid_wall_2), exlight(4)
+		setwork boid_debug(oid_wall_2),2.0,0.0,0.0
+
+	#endif
+#endif
+		
+		return 32+wall_tes*64
+	}
+return 16
+
+*_BoundingBoxGroundCol
+	gpy=BBoxGroundRange+tall_up
+	stt=0
+	re_up=0
+	fvset b_MoveVec2,0.0,0.0,0.0
+if up_f {
+	
+	_dist2=_dist
+	b_ttim2=0.0
+	b_dist2=0.0
+	__dist2=_dist2
+	wall_f=0
+	moveoff=0
+	repeat idcnt
+			if idlist(cnt)<0 {continue} 
+
+		RayBoxBoundProbe  idlist(cnt), _rpxyz, _MoveVec,_dist,MoveVec2,Normal,2,1
+		if stat&7{
+			if (stat&1){
+				if _dist>(tall) {
+
+					if _dist<_dist2 {
+
+
+							if _dist<gpy {
+								_dist2=_dist
+								oid_Ground_f=idlist(cnt)
+								oid_Ground_polcnt_f=hit_polcnt
+
+								fvset bbGroundNormal,Normal,Normal(1),Normal(2)
+								gpy=_dist2
+							}
+						
+					}else{
+						if stat&4{
+							if refdval<gpy {
+								if refdval>tall {
+									oid_Ground_f=idlist(cnt)
+									oid_Ground_polcnt_f=hit_polcnt
+									fvset bbGroundNormal,Normal,Normal(1),Normal(2)
+									gpy=refdval
+								}
+							}
+						}
+					}
+						}
+
+				}
+			
+			if (stat&2){
+				if b_ttim2>b_dist2 {
+					if b_ttim2<(tall_up-MoveVec(1)) {
+
+
+						b_dist2=b_ttim2
+						oid_Ground_b=idlist(cnt)
+						oid_Ground_b_polcnt=b_hit_polcnt
+						ceiling_Normal=b_Norm,b_Norm(1),b_Norm(2)
+					}
+				} 
+			}
+		}
+		_dist=__dist2
+	loop
+
+
+		if oid_Ground_f>=0 {
+			Ground_Posy=Posfeety+gpy-tall_up+MoveVec(1)
+		}
+//up
+ 		if oid_Ground_b>=0 and _dist2<__dist2 {//天井と地上に挟まれた可能性
+			if _dist2>b_dist2{
+
+				if b_dist2<(tall_up+Gap*2.0){
+					if (_dist2-b_dist2)<(tall_up+Gap*2.0) {//キャラの高さより狭かった
+
+
+					//XZの移動を停止
+						MoveVec(0)=0.0
+						MoveVec(2)=0.0
+						re_up=1
+						gosub *_Re_BoundingBoxGroundCol
+						if re_up=0 {
+							stt=2
+							MoveVec(1)+b_dist2
+			
+						}
+						if stat{
+							gf=1
+							goto *@f
+
+/* 							gf=1
+							logmes ""+_dist2+" "+b_dist2
+							MoveVec(1)+=_dist2-tall_up
+							return 3 */
+
+						}else{
+							gf=0
+							MoveVec(1)+=b_dist2-Step
+							oid_Ground_f=-1
+							oid_Ground_polcnt_f=-1
+							Ground_Posy=999999.999
+							return 2
+						}
+										
+					}
+				}
+			}else{
+				
+				if b_dist2<tall_up{
+					if b_dist2>(Step-MoveVec(1)+Gap){
+						MoveVec(0)=0.0
+						MoveVec(2)=0.0
+						re_up=1
+						gosub *_Re_BoundingBoxGroundCol
+					if re_up=0 {
+						stt=2
+						MoveVec(1)+b_dist2
+					}
+					if stat{
+						gf=1
+						goto *@f
+			
+					}else{
+						gf=0
+						oid_Ground_f=-1
+						oid_Ground_polcnt_f=-1
+						Ground_Posy=999999.999
+						return stt
+					}
+				}
+				}
+
+				
+
+			}
+ 
+		}
+
+		
+		if oid_Ground_b>=0  {//天井に衝突の可能性
+
+			//if b_dist2<(tall_up-MoveVec(1)+gap*2.0){
+
+
+				if (b_dist2-Step)>(-MoveVec(1)){//移動量より潜り込みが深いので横から衝突
+				//XZの移動を停止
+					MoveVec(0)=0.0
+					MoveVec(2)=0.0
+							re_up=1
+							gosub *_Re_BoundingBoxGroundCol
+						if re_up=0 {
+							stt=2
+							MoveVec(1)+b_dist2
+						}				
+					if stat{
+							gf=1
+
+						goto *@f
+
+					}else{	
+						
+						gf=0
+						oid_Ground_f=-1
+						oid_Ground_polcnt_f=-1
+						Ground_Posy=999999.999
+					return stt
+					}
+				}else{}
+			//}
+			
+		}
+		
+		if _dist2<__dist2 {//接地可能性
+
+			if _dist2<( tall_up+mbbc_Sticky ) {	//接地した
+					gf=1
+ 					if oid_Ground_b>=0 {//天井に衝突の可能性
+						MoveVec(1)=0.0//+=b_dist2-Step
+						return 3
+					}
+					MoveVec(1)+=_dist2-tall_up	//地上への移動量
+ 				if oid_Ground_b>=0 {//天井に衝突の可能性
+					if b_dist2>(Step+Gap) {//天井に衝突
+						if (b_dist2-Step)<-MoveVec(1) {//移動量より潜り込みが浅いので頭をぶつけた
+							return 3
+						}
+					}
+				}
+				return 1 
+
+			}
+		}
+
+		if oid_Ground_b>=0 {//天井に衝突の可能性
+			if (b_dist2-Step)<-MoveVec(1) {
+				if b_dist2>(Step-MoveVec(1)*0.0+Gap) {
+					MoveVec(1)+=b_dist2-Step
+							gf=0
+
+					return 2
+				}
+			}
+	
+		}
+	
+}else{
+	_dist2=_dist
+	b_ttim2=0.0
+	b_dist2=_dist2
+	b_distUnder2=0.0
+
+	__dist2=_dist2
+	wall_f=0
+	oid_Ground_polcnt_f=-1
+	oid_Ground_Under_b_polcnt=-1
+	repeat idcnt
+			if idlist(cnt)<0 {continue} 
+
+		RayBoxBoundProbe  idlist(cnt), _rpxyz, _MoveVec,_dist,MoveVec2,Normal,2,1
+		if stat&7{
+			if (stat&1){
+				if _dist>(tall-Gap){
+					if _dist<_dist2 {
+						_dist2=_dist
+						oid_Ground_f=idlist(cnt)
+						oid_Ground_polcnt_f=hit_polcnt
+
+						if _dist2<gpy {
+							oid_Ground_f=idlist(cnt)
+							fvset bbGroundNormal,Normal,Normal(1),Normal(2)
+							Ground_Posy=Posfeety+_dist2-tall_up
+							gpy=_dist2
+						}
+					}else{
+						if stat&4{
+							if refdval<gpy {
+								oid_Ground_f=idlist(cnt)
+								oid_Ground_polcnt_f=hit_polcnt
+								fvset bbGroundNormal,Normal,Normal(1),Normal(2)
+								Ground_Posy=Posfeety+refdval-tall_up
+								gpy=refdval
+							}
+						}
+					}
+				}
+
+				}
+
+
+				if (stat&2){
+					if b_ttim2<tall{
+
+						if b_ttim2<b_dist2 {
+							b_dist2=b_ttim2
+							oid_Ground_b=idlist(cnt)
+							oid_Ground_b_polcnt=b_hit_polcnt
+							ceiling_Normal=b_Norm,b_Norm(1),b_Norm(2)
+						}
+						if b_ttim2>b_distUnder2 {
+							b_distUnder2=b_ttim2
+							oid_Ground_Under_b=idlist(cnt)
+							oid_Ground_Under_b_polcnt=b_hit_polcnt
+							ceiling_Normal_Under=b_Norm,b_Norm(1),b_Norm(2)
+						}
+					}
+					
+				}
+			}
+		_dist=__dist2
+	loop
+
+
+	if oid_Ground_Under_b_polcnt>=0 {//下側の裏面に衝突
+		if oid_Ground_b_polcnt>=0 {//上側の裏面に衝突
+			if b_distUnder2<tall_up {//下側がキャラサイズ以下なので上側の裏面に変更（天井になる）
+
+				b_dist2=b_distUnder2
+				oid_Ground_b=oid_Ground_Under_b
+				oid_Ground_b_polcnt=oid_Ground_Under_b_polcnt
+				ceiling_Normal=ceiling_Normal_Under,ceiling_Normal_Under(1),ceiling_Normal_Under(2)
+
+			}
+		}else{
+
+				if _dist2<=b_distUnder2 {
+					if b_distUnder2>tall {				
+									oid_Ground_b=-1
+									b_dist2=__dist2		
+					}
+				}else{
+						
+			b_dist2=b_distUnder2
+			oid_Ground_b=oid_Ground_Under_b
+			oid_Ground_b_polcnt=oid_Ground_Under_b_polcnt
+			ceiling_Normal=ceiling_Normal_Under,ceiling_Normal_Under(1),ceiling_Normal_Under(2)
+		}
+		}
+	}
+
+		if oid_Ground_b>=0 {
+			if  _dist2<__dist2 {//天井と地上に挟まれた可能性
+
+				if b_dist2<(tall_up+Gap*2.0/* +MoveVec(1) */){
+					if _dist2>b_dist2 {
+						if (_dist2-b_dist2)<=(tall+Gap*2.0/* +MoveVec(1) */) {//キャラの高さより狭かった
+						//XZの移動を停止
+							MoveVec(0)=0.0
+							MoveVec(2)=0.0
+							gosub *_Re_BoundingBoxGroundCol
+							
+							if stat{
+								MoveVec(1)+=_dist2-tall_up-MoveVec(1)
+								gf=1
+								return 3
+
+							}else{
+								MoveVec(1)+=b_dist2-Step-MoveVec(1)
+								gf=0
+								oid_Ground_f=-1
+								oid_Ground_polcnt_f=-1
+								Ground_Posy=999999.999
+								return 2
+							}
+											
+						}else{
+
+
+
+}
+					}else{
+				
+
+
+}
+				}
+
+			}
+		
+			if b_dist2<(tall+MoveVec(1)){	
+
+				if b_dist2>(Step+Gap+MoveVec(1)) {
+					MoveVec(0)=0.0
+					MoveVec(2)=0.0
+					
+					gosub *_Re_BoundingBoxGroundCol
+					if stat{stt=2
+						goto *@f
+
+					}else{
+					gf=0
+
+						oid_Ground_f=-1
+						oid_Ground_polcnt_f=-1
+						Ground_Posy=999999.999
+						return 2
+					} 
+
+				} 
+				if _dist2<b_dist2 {
+						
+
+					MoveVec(0)=0.0
+					MoveVec(2)=0.0
+					gosub *_Re_BoundingBoxGroundCol
+				
+					if stat{
+						stt=2
+					}else{gf=0
+						oid_Ground_f=-1
+						oid_Ground_polcnt_f=-1
+						Ground_Posy=999999.999
+						return 2
+					}
+
+				} 
+			}
+		}
+
+*@
+
+		if _dist2<__dist2 {
+
+			if (_dist2>(tall-Gap-MoveVec(1))) {
+
+				if (_dist2<(tall_up+mbbc_Sticky+Gap+MoveVec(1))) {
+					MoveVec(1)=_dist2-tall_up
+						gf=1
+
+					return 1| stt
+				}
+	
+			}
+		}
+
+	} 
+gf=stt&1
+return stt
+
+
+
+//[---下のマクロはRayBoxBoundProbe使用後に裏面衝突してた場合使用可能---]
+#define global varBBBackDist 			b_ttim2@mod_hgCnvRayCol
+#define global ArrBBBackNormal 		b_Norm@mod_hgCnvRayCol
+#define global varBBBackInner 		b_inner@mod_hgCnvRayCol
+//U=getBBBack_UV(0) : V=getBBBack_UV(1)
+#define global ctype getBBBack_UV(%1) 			ftd(b_f_UV@mod_hgCnvRayCol(%1))
+
+
+
+//[---setBoundingBoxで設定したオブジェクトに対して衝突判定をする---]
+//RayBoxBoundProbe oid, rpxyz, rvec, p_Dist, mode, Norm, mode, wg
+// oid = バウンディングボックスを設定したオブジェクトID（入力）
+// rpxyz = レイの始点座標(3要素実数配列入力)	[rpxyz=x,y,z]
+// rvec = レイベクトル (3要素実数配列入力)	[rvec=vx,vy,vz]
+// p_Dist = 判定有効距離（入力）、衝突時の始点からの距離（出力）「statが1の時これをレイベクトルに掛けて始点座座標を加えれば交点になる」
+// MoveVec = 移動ベクトル(3要素配列出力)「XYZの移動量、modeにより何が出力されるか決まる」
+// Norm = 面法線(3要素配列出力)「衝突した表面の面法線」
+// mode = 交点を取得するかの設定 (入力) [ 0=衝突の有無のみ返す 1=交点までの距離をp_Distに出力、2=交点までの移動量(MoveVec) 面法線(Norm) 内積(システム変数refdval)に出力、3=めり込んだ分を外側に押し出し量(MoveVec) 面法線(Norm) 内積(システム変数refdval)に出力]
+// wg = 壁か地面の判定処理画選択 (入力) [ 0=壁判定処理(modeが2で垂直の壁以外の時衝突面方向にGap分移動) 1=地面判定処理(modeが2で垂直の壁以外の時真上にGap分移動) ]
+//返り値1：statが0の場合衝突なし、1なら表に衝突、2は裏に衝突、3は表裏に衝突、4は直線上にBOXは存在したが範囲外で交点は不明、
+//			5,7は直線上にBOXは存在し範囲外でシステム変数refdval交点までの距離が返る(6,7の裏面情報はgetBBBackマクロで取得)、-1は判定処理せずに終了
+//返り値2：modeが1か2でstatが1,3の時refdvalに内積が返る、statが5,7の時は交点までの距離
+//補足1：p_Dist, MoveVec, Normに出力されるのは表面に衝突した時のみ
+//補足2：裏面の情報はvarBBBackInner, getBBBack_U, getBBBack_V,varBBBackDist,ArrBBBackNormalで取得出来る
+#deffunc RayBoxBoundProbe int bboid,array rpxyz,array rvec,var p_Dist,array MoveVec,array Norm,int mode,int wg
+	fvset Norm2,0.0,0.0,0.0
+	if p_Dist=0.0  {
+		fvset Norm,0.0,0.0,0.0
+		return 0
+	}
+	getang bboid,_Angx, _Angy, _Angz
+	getpos bboid,ox,oy,oz
+	difx=(rpxyz-ox)//+Gap
+	dify=(rpxyz(1)-oy)//+Gap
+	difz=(rpxyz(2)-oz)//+Gap
+	p_Dist+Gap
+
+	tf=0
+	inner=0.0
+	b_inner=0.0
+	hit_polcnt=-1
+	b_hit_polcnt=-1
+	ttim2=p_Dist
+	b_ttim2=p_Dist
+
+		fvset _rvec_bak,rvec(0),rvec(1),rvec(2)
+
+		//オブジェクトの回転に合わせて差分座標とレイベクトルを回転
+		LocalRotRay difx,dify,difz,_Angx, _Angy, _Angz,_rvec_bak
+		setVec3 RayPosition2_f,difx,dify,difz
+		setVec3 RayDirection2_f,_rvec_bak(0),_rvec_bak(1),_rvec_bak(2)
+		fvset b_Norm,0.0,0.0,0.0
+
+		//光線がBOXの境界ボックスに当たるかどうかを判定
+		if D3DXBoxBoundProbe(bbox_dat_f_list(0,bboid),bbox_dat_f_list(3,bboid),RayPosition2_f,RayDirection2_f) {//当った
+			if mode {
+				dup dup_bbsize,bbox_dat_list(6,bboid)
+				dup dup_bbcentre,bbox_dat_list(9,bboid)
+				bxdx=(difx+dup_bbcentre)/dup_bbsize
+				bxdy=(dify+dup_bbcentre(1))/dup_bbsize(1)
+				bxdz=(difz+dup_bbcentre(2))/dup_bbsize(2)
+
+				setVec3 RayPosition2_f,bxdx,bxdy,bxdz
+				setVec3 RayDirection2_f,_rvec_bak(0)/dup_bbsize,_rvec_bak(1)/dup_bbsize(1),_rvec_bak(2)/dup_bbsize(2)
+
+				polcntmax=0
+
+				repeat 12
+					dup dup_bbox_f,bbox_f(cnt*9)
+					D3DXIntersectTri dup_bbox_f,dup_bbox_f(3),dup_bbox_f(6),RayPosition2_f,RayDirection2_f,f_U,f_V,f_Dist
+					if stat {
+						polcntmax++
+						tim=ftd(f_Dist)
+
+						fvset inner2,_Angx, -_Angy, _Angz
+						dup dup_box_mn,box_mn(cnt*3)
+						fvdir inner2,dup_box_mn,dup_box_mn(1),dup_box_mn(2)
+						memcpy Norm2,inner2,24
+						fvunit inner2 
+						fvinner inner2,rvec,rvec(1),rvec(2)
+
+						if inner2<0.0 {
+							inner=inner2
+							f_UV=f_U,f_V
+							ttim2=tim
+							hit_polcnt=cnt
+							Norm=Norm2,Norm2(1),Norm2(2)
+							if polcntmax=2  or wg=0  {break}
+						}else{
+							if wg {
+								b_inner=inner2
+								b_f_UV=f_U,f_V
+								b_ttim2=tim
+								b_hit_polcnt=cnt
+								b_Norm=Norm2,Norm2(1),Norm2(2)
+								if polcntmax=2 {break}
+							}
+						}
+						
+					}
+				loop
+
+
+				if ttim2<p_Dist  {
+					ttim2-Gap
+					if ttim2>Gap*2{ttim2-Gap}else{ttim2=Gap}
+					if mode=1 {
+						p_Dist=ttim2
+						return 1 | ((b_hit_polcnt>=0)*2)
+					}
+					tf=1	//接触したフラグ
+					if mode=2 {//交点までの移動量
+
+							if wg {
+								p_Dist=ttim2-Gap
+								if  absf(Norm(1)) < WallVerticalRange {
+									fvset MoveVec,rvec*p_Dist,rvec(1)*p_Dist,rvec(2)*p_Dist
+								}else{
+									fvset MoveVec,rvec*p_Dist,rvec(1)*p_Dist,rvec(2)*p_Dist
+									MoveVec(1)+=Norm(1)*Gap
+								}
+							}else{
+								if  absf(Norm(1)) < WallVerticalRange {
+									p_Dist=ttim2-Gap//*2
+									if p_Dist<=Gap{p_Dist=0.0}
+
+									fvset MoveVec,rvec*p_Dist,rvec(1)*p_Dist,rvec(2)*p_Dist
+								}else{
+									p_Dist=ttim2//-Gap
+									fvset MoveVec,rvec*p_Dist+Norm*Gap,rvec(1)*p_Dist,rvec(2)*p_Dist+Norm(2)*Gap
+								}
+								
+							}
+						
+					}else{
+
+						if Norm(1)>0.0 {
+							p_Dist=ttim2
+							fvset MoveVec,0.0,0.0,0.0
+
+							mref _stat,64
+							_stat=tf | ((b_hit_polcnt>=0)*2)
+							return inner
+						}
+						if  absf(Norm(1)) <= WallVerticalRange {//押し出し移動量
+							fvset rvec2,rvec(0),rvec(1),rvec(2)
+							fvset MoveVec,rvec*p_Dist,rvec(1)*p_Dist,rvec(2)*p_Dist
+							p_Dist=p_Dist-ttim2+Gap
+							fvmul rvec2,p_Dist,p_Dist,p_Dist
+							fvinner rvec2,Norm,Norm(1),Norm(2)
+							rvec2=absf(rvec2)
+							fvadd MoveVec,rvec2*Norm,rvec2*Norm(1),rvec2*Norm(2)
+							p_Dist=ttim2
+						}else{
+
+							p_Dist=ttim2
+							
+							fvset MoveVec,rvec*p_Dist+Norm*Gap,rvec(1)*p_Dist,rvec(2)*p_Dist+Norm(2)*Gap
+						}
+					}
+					mref _stat,64
+					_stat=tf | ((b_hit_polcnt>=0)*2)
+					return inner
+				}else{
+					ttim2-Gap
+					if ttim2>Gap*2{ttim2-Gap}else{ttim2=Gap}
+					mref _stat,64
+					_stat=(((b_hit_polcnt>=0)*2) | (hit_polcnt>=0)) | 4
+					return ttim2
+				}
+			}
+			p_Dist-Gap
+
+			return 4
+		}
+		p_Dist-Gap
+
+return 0
+
+
+//[---配列に3頂点のXYZ座標を入れてレイを飛ばし判定---]
+//RayIntersectTri %1, %2, %3, %4
+//  %1 = 3頂点のXYZ座標(配列9要素入力)
+//  %2 = レイ始点座標(配列3要素入力)
+//  %3 = レイベクトル(配列3要素入力)
+//  %4 = 衝突時の始点からの距離（出力）「これをレイベクトルに掛けて始点座座標を加えれば交点になる」
+//返り値：statが0なら衝突なし、1なら衝突した
+#define global RayIntersectTri(%1,%2,%3,%4) dup dup_Tri@temp,%1:setfloat4 f_TriA@temp,dup_Tri@temp,dup_Tri@temp(1),dup_Tri@temp(2)	:%c\
+	setfloat4 f_TriB@temp,dup_Tri@temp(3),dup_Tri@temp(4),dup_Tri@temp(5): setfloat4 f_TriC@temp,dup_Tri@temp(6),dup_Tri@temp(7),dup_Tri@temp(8)	:%c\
+	setfloat4 f_RayPos@temp,%2,%2(1),%2(2):setfloat4 f_RayDir@temp,%3,%3(1),%3(2)	:%c\
+	D3DXIntersectTri@mod_hgCnvRayCol f_TriA@temp,f_TriB@temp,f_TriC@temp,f_RayPos@temp,f_RayDir@temp,f_U@temp,f_V@temp,f_Dist@temp	:%4=ftd(f_Dist@temp)	:
+
+
+
+//[---setVertexTriで設定した三角形リストをレイと衝突判定し一番近い面を取得します---]
+//getRayIntersectTriList tridx, Dist, vtlid, sidx, maxidx, rpxyz, rvec
+//  tridx = 衝突した一番近い面インデッウクス（出力）[衝突なしなら-1]
+//  p_Dist = 判定有効距離（入力）、衝突時の始点からの距離（出力）「これをレイベクトルに掛けて始点座座標を加えれば交点になる」
+//  vtlid = 三角形リストID	[setVertexTriで使用したID]
+//  sidx = リストの何番目から判定するかのインデックス（入力）
+//  maxidx = sidxから何個判定するか（入力）
+//  rpxyz = レイ始点座標(配列3要素入出力)「modeが1なら交点、2なら押し出された位置、1,2で衝突しなかったらrvec方向に距離p_Dist移動」
+//  rvec = レイベクトル(配列3要素入出力)「modeが1、2なら面法線」
+//  mode = 判定後の処理のしかた(入力)[0=移動せず交点までの距離を返す 1=交点に移動してrvecに面法線を返す 2=めり込んだ分を外側に押し出しrvecに面法線を返す 4=表面のみ 8=裏面のみ]
+//返り値1：statが0なら衝突なし、1なら衝突した
+//返り値2：refdvalに内積が返る「modeが1,2使用で衝突した時のみ」
+#deffunc getRayIntersectTriList var tridx,var p_Dist,int vtlid,int sidx,int maxidx,array rpxyz,array rvec,int mode
+	tridx=-1
+	tridx_cnt=0
+	tridx_List=0
+	tri_Dist_List=0.0
+	if p_Dist<=0.000 {return 0}else{Dist_bak=p_Dist}
+	dupptr dup_f_VertexTri_min,varptr(f_VertexTri(vtlid)),(sidx+maxidx)*4*9,4
+	dupptr dup_array_VerTri_mn,varptr(VerTri_mn(vtlid)),VerTriMax_list(vtlid)*24,3
+
+	setVec3 temp_f_RayPos,rpxyz,rpxyz(1),rpxyz(2)
+	setVec3 temp_f_RayDir,rvec,rvec(1),rvec(2)
+	if (mode&12)>0 {
+		inner_tes=1.0,-1.0
+		dup dup_inner_tes,inner_tes(mode/4-1)
+		repeat maxidx,sidx
+			dup dup_f_VertexTri,dup_f_VertexTri_min(cnt*9)
+			D3DXIntersectTri dup_f_VertexTri,dup_f_VertexTri(3),dup_f_VertexTri(6),temp_f_RayPos,temp_f_RayDir,f_U,f_V,f_Dist
+			if stat {
+				dup dup_VerTri_mn,dup_array_VerTri_mn(cnt)
+				if ((rvec*dup_VerTri_mn+rvec(1)*dup_VerTri_mn(1)+rvec(2)*dup_VerTri_mn(2))*dup_inner_tes)<=0.0 {
+					FloatToDouble f_Dist
+					if getDouble<Dist_bak {
+						tridx_List(tridx_cnt)=cnt
+						tri_Dist_List(tridx_cnt)=getDouble
+						tridx_cnt++
+						if getDouble<p_Dist {
+							p_Dist=getDouble
+							tridx=cnt
+						}
+					}
+				}
+			}
+		loop
+	}else{
+		repeat maxidx,sidx
+			dup dup_f_VertexTri,dup_f_VertexTri_min(cnt*9)
+			D3DXIntersectTri dup_f_VertexTri,dup_f_VertexTri(3),dup_f_VertexTri(6),temp_f_RayPos,temp_f_RayDir,f_U,f_V,f_Dist
+			if stat {
+				FloatToDouble f_Dist
+				if getDouble<Dist_bak {
+					tridx_List(tridx_cnt)=cnt
+					tri_Dist_List(tridx_cnt)=getDouble
+					tridx_cnt++
+					if getDouble<p_Dist {
+						p_Dist=getDouble
+						tridx=cnt
+					}
+				}
+			}
+		loop
+	}
+
+	if mode&3 {
+		if mode&1 {
+			if tridx>=0 {
+				dup dup_VerTri_mn,dup_array_VerTri_mn(cnt)
+				inner=rvec*dup_VerTri_mn+rvec(1)*dup_VerTri_mn(1)+rvec(2)*dup_VerTri_mn(2)
+				fvmul rvec,p_Dist,p_Dist,p_Dist
+				fvadd rpxyz,rvec(0),rvec(1),rvec(2)
+				fvset rvec,dup_VerTri_mn,dup_VerTri_mn(1),dup_VerTri_mn(2)
+				fvadd rpxyz,rvec*Gap,rvec(1)*Gap,rvec(2)*Gap
+				return inner
+	
+			}else{
+				fvmul rvec,Dist_bak,Dist_bak,Dist_bak
+				fvadd rpxyz,rvec(0),rvec(1),rvec(2)
+			}
+		}else{
+			if tridx>=0 {
+				dup dup_VerTri_mn,dup_array_VerTri_mn(cnt)
+				inner=rvec*dup_VerTri_mn+rvec(1)*dup_VerTri_mn(1)+rvec(2)*dup_VerTri_mn(2)
+				fvset rvec_bak,rvec, rvec(1), rvec(2)
+				fvmul rvec,Dist_bak,Dist_bak,Dist_bak
+				fvadd rpxyz,rvec(0),rvec(1),rvec(2)
+
+				fvmul rvec_bak,Dist_bak-p_Dist,Dist_bak-p_Dist,Dist_bak-p_Dist
+				fvset rvec,dup_VerTri_mn,dup_VerTri_mn(1),dup_VerTri_mn(2)
+	
+				fvinner rvec_bak,rvec,rvec(1),rvec(2)
+				rvec_bak=absf(rvec_bak)
+				fvadd rpxyz,rvec_bak*rvec+rvec*Gap,rvec_bak*rvec(1)+rvec(1)*Gap,rvec_bak*rvec(2)+rvec(2)*Gap
+				return inner
+
+			}else{
+				fvmul rvec,Dist_bak,Dist_bak,Dist_bak
+				fvadd rpxyz,rvec(0),rvec(1),rvec(2)
+			}
+
+		}
+
+	} 
+
+return 0.0
+
+
+
+//[---三角形リストを登録---]
+//setVertexTri  vtlid, VerTri, VerTriMax, VTList
+//  vtlid = 三角形リストID（入力）
+//  VerTri = 三角形の頂点リスト（実数型配列変数入力）「1頂点3要素なので三角形で9要素」
+//  VerTriMax = 三角形の数	（入力）
+//  VTList = 頂点のインデックス(省略時頂点順)（整数型配列変数入力）「三角形一つで3要素」
+#define global setVertexTri(%1,%2,%3,%4=VTList@temp) _setVertexTri %1,%2,%3,%4
+#deffunc _setVertexTri int vtlid,var VerTri,int VerTriMax,var VTList
+	if vartype(f_VertexTri)=4 {
+		sdim f_VertexTri,64,1
+		sdim VerTri_mn,64,1
+		dim temp_float4,4
+		dim temp_f_RayPos,4
+		dim temp_f_RayDir,4
+	}
+	VerTriMax_list(vtlid)=VerTriMax
+	memexpand f_VertexTri(vtlid),VerTriMax*4*9
+	memexpand VerTri_mn(vtlid),VerTriMax*8*3
+
+	dupptr dup_f_VertexTri,varptr(f_VertexTri(vtlid)),VerTriMax*4*9,4
+	dupptr dup_VerTri_mn,varptr(VerTri_mn(vtlid)),VerTriMax*8*3,3
+
+	dup dup_VerTri,VerTri
+
+	if varptr(VTList@temp) !  varptr(VTList) {
+		dupptr dup_VTList,varptr(VTList),VerTriMax*4*3,4
+		repeat VerTriMax
+			vtcnt=cnt*3
+			repeat 3
+				setVec3 temp_float4,dup_VerTri(dup_VTList(vtcnt)*3),dup_VerTri(dup_VTList(vtcnt)*3+1),dup_VerTri(dup_VTList(vtcnt)*3+2)
+				memcpy dup_f_VertexTri(vtcnt*3),temp_float4,12
+				vtcnt++
+			loop
+			vtcnt=cnt*3
+			memcpy vxyz,dup_VerTri(dup_VTList(vtcnt+1)*3),24
+			fvset outer,dup_vx-dup_VerTri(dup_VTList(vtcnt+2)*3),dup_vy-dup_VerTri(dup_VTList(vtcnt+2)*3+1),dup_vz-dup_VerTri(dup_VTList(vtcnt+2)*3+2)
+			fvouter outer,-dup_vx+dup_VerTri(dup_VTList(vtcnt)*3),-dup_vy+dup_VerTri(dup_VTList(vtcnt)*3+1),-dup_vz+dup_VerTri(dup_VTList(vtcnt)*3+2)
+			fvunit outer
+			memcpy dup_VerTri_mn(vtcnt),outer,24
+				
+		loop
+	}else{
+		repeat VerTriMax
+			vtcnt=cnt*9
+			repeat 3
+				setVec3 temp_float4,dup_VerTri(vtcnt),dup_VerTri(vtcnt+1),dup_VerTri(vtcnt+2)
+				memcpy dup_f_VertexTri(vtcnt),temp_float4,12
+				vtcnt+3
+			loop
+			vtcnt=cnt*3
+			memcpy vxyz,dup_VerTri((vtcnt+1)*3),24
+			fvset outer,dup_vx-dup_VerTri((vtcnt+2)*3),dup_vy-dup_VerTri((vtcnt+2)*3+1),dup_vz-dup_VerTri((vtcnt+2)*3+2)
+			fvouter outer,-dup_vx+dup_VerTri((vtcnt)*3),-dup_vy+dup_VerTri((vtcnt)*3+1),-dup_vz+dup_VerTri((vtcnt)*3+2)
+			fvunit outer
+			memcpy dup_VerTri_mn(vtcnt),outer,24
+		loop
+	}
+
+return
+
+//[---Terrainデータ判定時の設定---]
+//setTerrainPar  Gap_p, Sticky_p, WallSteepSlopes_p, WallVerticalRange_p, GroundRange_p, BBoxGroundRange_p
+// Gap_p = 交点から面の表側にGap_p分移動させる（省略時0.01）「0だと面と一致してしまい色々面倒」
+// Sticky_p = 地面から離れても吸い付く距離（省略時2.0）「小さいと斜面で空中に浮く,大きすぎるとジャンプできない等問題が起きる」
+// WallSteepSlopes_p = 急斜面とする角度（省略時90.0、最高90度まで）「これは通常垂直の壁のみ処理するwall系判定に指定角度以上の面も処理できるようにします」
+// WallVerticalRange_p = 壁とする範囲（省略時0.000001）「これは通常0.0が垂直の壁になるけど計算誤差等で0.0にならない場合の対策」
+// GroundRange_p = 地面を検索する距離（省略時100.0）「TerrainGround系判定で影用に地面までの距離や面法線を取得するために検索する最大距離」
+// BBoxGroundRange_p = setBoundingBoxで設定されたオブジェクトを地面とした時の検索する距離（省略時100.0）「Terrain系とは違い仕組み上の問題で横移動中は検索範囲が短くなる事がある」
+#define global setTerrainPar(%1=0.01,%2=2.0,%3=90.0,%4=0.000001,%5=100.0,%6=100.0) _setTerrainPar %1,%2,%3,%4,%5,%6
+#deffunc _setTerrainPar double Gap_p,double Sticky_p,double WallSteepSlopes_p,double WallVerticalRange_p,double GroundRange_p,double BBoxGroundRange_p
+	Gap=Gap_p
+	Sticky=Sticky_p
+	WallSteepSlopes=-0.001*int(cos(deg2rad(limitf(WallSteepSlopes_p,0.0,90.0)))*1000.0)
+	WallVerticalRange=WallVerticalRange_p
+	GroundRange=GroundRange_p
+	BBoxGroundRange=BBoxGroundRange_p
+return
+
+//[---Terrainデータ判定時に座標、回転、スケール参照先指定---]
+//setTerrainLinkObj  tid, oid, opt
+// tid = TerrainデータID [loadTerrainで使用したID]
+// oid = 関連付けるオブジェクトID [Terrainデータの衝突判定する時に座標、回転、スケールを参照するオブジェクト]
+// opt = 関連付けるCol命令の種類指定 [0=getMovTerrainGroundCol ､1=getMovTerrainWallColとgetTerrainWallCol ､2=getTerrainCol ､3=全て]
+//「oidに-1を指定すると関連付けが解除されます。
+//	statに関連付けされてたオブジェIDが返ります。」
+#deffunc setTerrainLinkObj int tid,int oid,int opt
+	if opt=3 {
+		oid_bak=tlo_g_list(tid)
+		tlo_g_list(tid)=oid
+		tlo_w_list(tid)=oid
+		tlo_t_list(tid)=oid
+	}else{
+		if opt=0 {oid_bak=tlo_g_list(tid):tlo_g_list(tid)=oid}
+		if opt=1 {oid_bak=tlo_w_list(tid):tlo_w_list(tid)=oid}
+		if opt=2 {oid_bak=tlo_t_list(tid):tlo_t_list(tid)=oid}
+	}
+return oid_bak
+
+
+//loadTerrainで作ったデータを移動、回転、スケールの変更（データは変更せずに判定時に反映させる）
+//Terrainデータのposグループ情報を設定
+#deffunc tsetpos int tid,double tx,double ty,double tz
+	tposx(tid)=tx:tposy(tid)=ty:tposz(tid)=tz
+return
+//Terrainデータのangグループ情報を設定
+#deffunc tsetang int tid,double tx,double ty,double tz
+	tangx(tid)=tx:tangy(tid)=ty:tangz(tid)=tz
+return
+//Terrainデータのscaleグループ情報を設定
+#deffunc tsetscale int tid,double tx,double ty,double tz
+	tsclx(tid)=tx:tscly(tid)=ty:tsclz(tid)=tz
+return
+
+//Terrainデータの衝突判定をした時に衝突した面との内積を取得
+#define global varTerrainTriInner inner_Confirm@mod_hgCnvRayCol
+
+//Terrainデータの衝突判定をした時に衝突した面の法線を参照できる
+// 法線X = ArrTerrainNormal(0)
+// 法線Y = ArrTerrainNormal(1)
+// 法線Z = ArrTerrainNormal(2)
+#define global ArrTerrainNormal Normal@mod_hgCnvRayCol
+
+//Terrainデータの衝突判定をした時に衝突した面のUVを取得
+#define global ctype getTerrainTri_UV(%1) 	ftd(f_UV@mod_hgCnvRayCol(%1))
+
+//getMovTerrainGroundCol実行後に取得出来る面法線
+#define global ArrGroundNormal GroundNormal@mod_hgCnvRayCol
+
+
+
+
+//[---Terrainデータのポリゴンナンバーからマテリアルを取得---]
+//getTerrainPolMaterial tid, poly_no
+// tid = TerrainデータID（入力）
+// poly_no = ポリゴンナンバー（入力）
+#defcfunc getTerrainMaterial int tid,int poly_no
+	dupptr dup_Terraindata_MaterialList,varptr(Terraindata_MaterialList(tid)),Terrain_Trimax(tid)*4,4
+return dup_Terraindata_MaterialList(poly_no)
+
+//[---loadTerrainで使用したIDを使いバウンディングボックスを取得する---]
+//getTerrainBoundingBox tid, minbbox, maxbbox
+// tid = バウンディングボックスを取得するTerrainデータID（入力）
+// minbbox = ボックスの左上後XYZ (3要素実数配列出力)
+// maxbbox = ボックスの右下前XYZ (3要素実数配列出力)
+#deffunc getTerrainBoundingBox int tid,array minbbox,array maxbbox
+	D3DXComputeBoundingBox Terraindata_Trivec_f(tid),Terrain_Tricnt(tid)/3,4*3,BoxMin,BoxMax
+	minbbox=ftd(BoxMin),ftd(BoxMin(1)),ftd(BoxMin(2))
+	maxbbox=ftd(BoxMax),ftd(BoxMax(1)),ftd(BoxMax(2))
+return
+
+//[---モデルからTerrainデータ作成---]
+//loadTerrain tid, xfilnam, pdsize, ltopt, loadf
+// tid = TerrainデータID（0～）「任意の数字を指定」
+// xfilnam = X形式のモデルファイル名「基本的にMetaseqで作られたファイルに対応（四角形は三角形に分割される）」
+// pdsize = 分割サイズ（省略時0.0）「通常は1枚のポリゴンの大きさの二倍以上を自動算出します。指定する場合は一番大きい三角形の1/3以上にしないと抜けが出る可能性があります」
+// ltopt = 壁と急斜面のポリゴンにフラグを設定するか（省略時0）「0=設定する、1=設定しない　(設定すると同じデータで壁と地面を別けて判定出来て処理の軽減になります)」
+// loadf = 作られたデータをセーブ＆ロードするかのスイッチ（省略時0）「0=しない、1=セーブ、ロードする」
+//返り値1：statにセーブ成功なら1が、ロード成功なら2が返る
+//返り値2：refstrにファイル名が返る
+//補足1：pdsizeは区分け境界線と三角形の境界が重ならないように補正されます。
+//補足2：pdsizeは小さい方が1区域の判定処理が軽くなるけど、マウスで地形をポイントするような長い距離をレイ判定する時に検索区域数が多くなる
+//			後メモリ消費量は多くなります。
+//補足3：セーブデータはカレントでは無く読み込んだXファイルと同じディレクトリに保存されます。
+#define global loadTerrain(%1,%2,%3=0.0,%4=0,%5=0) _loadTerrain %1,%2,%3,%4,%5
+#deffunc _loadTerrain int tid,str xfilnam,double pdsize ,int ltopt,int loadf
+	if dtftemp_ptr=0 {hgCnvRayCol_init}
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&192)!192
+
+	if (debgmesy+238)>ginfo_sy {debgmesy=0 :color 255,255,255:boxf:color}
+	line_db_y=debgmesy
+	if mod_hgCnvRayCol_debug@&64 {debgmesy+200}
+	#endif
+#endif	
+
+
+	_wss=ltopt&1
+	tid_bak=-1
+
+	tlo_g_list(tid)=-1
+	tlo_w_list(tid)=-1
+	tlo_t_list(tid)=-1
+	if loadTerrain_f=0 {
+	ddim temp_fv,4
+	dup temp_fvx,temp_fv
+	dup temp_fvy,temp_fv(1)
+	dup temp_fvz,temp_fv(2)
+	inner_Confirm=0.0
+	fvset Normal,0.0,0.0,0.0
+	fvset GroundNormal,0.0,0.0,0.0
+		ddim tposx,10
+		ddim tposy,10
+		ddim tposz,10
+		ddim tangx,10
+		ddim tangy,10
+		ddim tangz,10
+		ddim tsclx,10
+		ddim tscly,10
+		ddim tsclz,10
+	
+		dim BoxMin,3
+		dim BoxMax,3
+		loadTerrain_f=1
+	}
+	tsclx(tid)=1.0
+	tscly(tid)=1.0
+	tsclz(tid)=1.0
+	tposx(tid)=0.0
+	tposy(tid)=0.0
+	tposz(tid)=0.0
+	tangx(tid)=0.0
+	tangy(tid)=0.0
+	tangz(tid)=0.0
+	if loadf {
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		color
+		pos 50,debgmesy
+		mes xfilnam+"_"+str(pdsize)+"_.coldat"+"  の存在を確認します"
+		debgmesy+=ginfo_mesy
+	#endif
+#endif	
+		
+		exist xfilnam+"_"+str(pdsize)+"_.coldat"
+		if strsize>0{
+			memcopysize=strsize
+			
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		color
+		pos 50,debgmesy
+		mes xfilnam+"_"+str(pdsize)+"_.coldat"+"  を読み込みます"
+		debgmesy+=ginfo_mesy
+	#endif
+#endif	
+			dim colloaddat,memcopysize/4
+			bload xfilnam+"_"+str(pdsize)+"_.coldat",colloaddat,memcopysize
+			gmax_x=colloaddat(0)
+			gmax_z=colloaddat(1)
+			Tricnt=colloaddat(2)
+			vecmax=colloaddat(3)
+			Trimax=colloaddat(4)
+			total=colloaddat(5)
+			polysize=colloaddat(6)
+			dupptr dup_colloaddat_d,varptr(colloaddat(7)),8*7,3
+			
+			minx=dup_colloaddat_d(0)
+			miny=dup_colloaddat_d(1)
+			minz=dup_colloaddat_d(2)
+			maxx=dup_colloaddat_d(3)
+			maxy=dup_colloaddat_d(4)
+			maxz=dup_colloaddat_d(5)
+			polyscale=dup_colloaddat_d(6)
+			dat_copy_f=0
+	gosub	*_datset_	//初期データセット
+	
+			memcopyindex=21*4
+			memcpy Terraindata_mapcnt(tid),colloaddat,gmax_x*gmax_z*4,0,memcopyindex
+			memcopyindex+gmax_x*gmax_z*4
+			memcpy Terraindata_Trivec_f(tid),colloaddat,Tricnt*4,0,memcopyindex
+			memcopyindex+=Tricnt*4
+			memcpy Terraindata_Triindex(tid),colloaddat,Trimax*4*3,0,memcopyindex
+
+			memcopyindex+=Trimax*4*3
+			memcpy Terraindata_Trilist(tid),colloaddat,total*4,0,memcopyindex
+			memcopyindex+=total*4
+			memcpy Terraindata_Trilistptr(tid),colloaddat,gmax_x*gmax_z*4,0,memcopyindex
+			memcopyindex+=gmax_x*gmax_z*4
+
+			memcpy Terraindata_MaterialList(tid),colloaddat,Trimax*4,0,memcopyindex
+			memcopyindex+=Trimax*4
+
+
+			memcpy Terraindata_vecxyz(tid),colloaddat,vecmax*8*3,0,memcopyindex
+			memcopyindex+=vecmax*8*3
+
+			memcpy Terraindata_mn_vecxyz(tid),colloaddat,Trimax*8*3,0,memcopyindex
+			memcopyindex+=Trimax*8*3
+
+			memcpy Terraindata_mapy(tid),colloaddat,gmax_x*gmax_z*8,0,memcopyindex
+
+
+			memcopyindex+=gmax_x*gmax_z*8
+
+			memcpy Terraindata_wall_f_list(tid),colloaddat,Tricnt/9,0,memcopyindex
+
+
+			mref _stat,64
+			_stat=2
+			return xfilnam+"_"+str(pdsize)+"_.coldat"
+		}else{
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		color
+		pos 50,debgmesy
+		mes "ファイルは有りませんでした"
+		debgmesy+=ginfo_mesy
+	#endif
+#endif
+			}
+	}
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		color
+		pos 50,debgmesy
+		mes xfilnam+"  を読み込みます"
+		debgmesy+=ginfo_mesy
+	#endif
+#endif
+		notesel xfil
+	noteload xfilnam
+	dim note_index,2
+	
+	find_name="Mesh ","MeshMaterialList "
+
+	if 	instr(xfil,0,"{\n")<0 {
+
+		find_sp="{"+strf("%c",$0A)
+		find2_sp=";,"+strf("%c",$0A)
+		find3_sp=",,"+strf("%c",$0A)
+		find_spadd=1
+
+	}else{
+		find_sp="{\n"
+		find2_sp=";,\n"
+		find3_sp=",,\n"
+		find_spadd=2
+
+	}
+
+	err_note=""
+	dim find_index,3
+	dim note_index,3
+
+	dim note_index2,3
+	sdim str_veclist,64,3
+	repeat 2
+		find_cnt=cnt
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		pos 30,debgmesy
+		mes find_name(find_cnt)+"  を検索、切り出し処理中"
+		debgmesy+=ginfo_mesy
+	#endif
+#endif	
+		
+		repeat 
+			find_index(find_cnt)=instr(xfil,note_index(find_cnt),find_name(find_cnt))
+			if find_index(find_cnt)<0 {
+				err_note+find_name(find_cnt)+"\n"
+				if find_cnt=0 {dialog find_name(find_cnt)+"の解析に失敗しました\n":end}
+				break
+			}
+			note_index(find_cnt)+find_index(find_cnt)
+
+			note_index(find_cnt)+instr(xfil,note_index(find_cnt),find_sp)+find_spadd+1
+			getstr str_number,xfil,note_index(find_cnt),';'
+			note_index(find_cnt)+strsize	//Mesh、MeshMaterialListのデータ開始位置
+			if int(str_number)>0 {number(find_cnt)=int(str_number):note_index(find_cnt)+find_spadd:break}
+		loop
+		if find_index(find_cnt)<0 {continue}
+		
+		if find_name(find_cnt)="MeshMaterialList " {//MeshMaterialListのインデックス開始位置取得
+
+			getstr str_number,xfil,note_index(find_cnt),';'
+			note_index(find_cnt)+strsize
+			if int(str_number)>0 {number(find_cnt)=int(str_number):note_index(find_cnt)+find_spadd:}else{dialog find_name(find_cnt)+"の解析に失敗しました":end}
+
+			note_index_strsize(find_cnt)=instr(xfil,note_index(find_cnt),";;")
+			note_index2(find_cnt)=note_index(find_cnt)+note_index_strsize(find_cnt)+2+find_spadd//MeshMaterialListのインデックス開始位置
+			str_veclist(find_cnt)= strmid(xfil,note_index(find_cnt),note_index_strsize(find_cnt))//MeshMaterialList取得
+			continue 
+		}else{//Meshのインデックス開始位置取得
+
+			note_index_strsize(find_cnt)=instr(xfil,note_index(find_cnt),";;")
+
+			note_index2(find_cnt)=note_index(find_cnt)+note_index_strsize(find_cnt)+2+find_spadd//Meshのインデックス開始位置
+			repeat
+				getstr str_Meshmax,xfil,note_index2(find_cnt),';'
+				note_index2(find_cnt)+strsize
+				if ';'=stat {
+				if int(str_Meshmax)=0 {dialog find_name(find_cnt)+"の解析に失敗しました":end}
+
+				Meshmax(find_cnt)=int(str_Meshmax):note_index2(find_cnt)+find_spadd:break}
+			loop
+		}
+		str_veclist(find_cnt)= strmid(xfil,note_index(find_cnt),note_index_strsize(find_cnt))//Mesh取得
+	loop
+
+	if find_index>0 {vecmax=number}//頂点数
+	if find_index(1)>0 {mt_max=number(1)}//マテリアル数
+	if find_index(2)>0 {vmn_vecmax=number(2)}//法線数
+
+	sdim str_vecxyz,64,vecmax+10	//頂点座標分割用に予め必要数確保（splitに任せると重くなる）
+
+	ddim vecxyz,3*vecmax+1	//文字列の座標を実数にして保存する配列(fvsetを使用するので+1)
+	dim vecxyz_f,3*vecmax+1	//文字列の座標をfoaltにして保存する配列（+1にしてるのはfloat化するのに使ってる命令の都合上）
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		pos 30,debgmesy
+		mes ""+vecmax+"個の頂点データdoubleをFloatに変換処理中"
+		debgmesy+=ginfo_mesy
+	#endif
+#endif	
+
+//文字列の座標を実数とfloatにして保存
+
+		split str_veclist,find2_sp,str_vecxyz	//頂点座標を行で分割
+		repeat vecmax
+			split str_vecxyz(cnt),";",str_vecx,str_vecy,str_vecz
+			 dup dup_vecxyz,vecxyz(cnt*3)
+			 fvset dup_vecxyz,0.0+str_vecx,-1.0*str_vecy,0.0+str_vecz
+			modhg_setVec4 vecxyz_f(cnt*3),dup_vecxyz,dup_vecxyz(1),dup_vecxyz(2),0.0
+		loop
+
+	str_Meshlist= strmid(xfil,note_index2,instr(xfil,note_index2,";;"))
+
+	Tricnt=0
+	sdim str_Meshindex,,Meshmax+10
+	split str_Meshlist,find2_sp,str_Meshindex
+	
+	dim Trivec_f,9*Meshmax*2
+	dim Triindex,3*Meshmax*2
+	ddim mn_vecxyz,3*Meshmax*2
+	sdim str_MaterialList,,Meshmax+10
+
+	split str_veclist(1),",",str_MaterialList
+	sdim str_Meshindex_temp,,Meshmax+10
+
+	dim MaterialList,3*Meshmax*2
+	dim vecABCDno,4
+	dup dup_vecAno,vecABCDno
+	dup dup_vecBno,vecABCDno(1)
+	dup dup_vecCno,vecABCDno(2)
+	dup dup_vecDno,vecABCDno(3)
+	ddim vxyz,3
+	dup dup_vx,vxyz
+	dup dup_vy,vxyz(1)
+	dup dup_vz,vxyz(2)
+	sdim wall_f_list,Meshmax*3
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		pos 30,debgmesy
+		mes ""+Meshmax+"枚のMeshを三角形にして面法線を計算して配列化中"
+		debgmesy+=ginfo_mesy
+	#endif
+#endif	
+//メッシュインデックスを数値化して四角形は三角形にして各ポリゴン毎にfoalt頂点と面法線を計算して配列化
+	repeat Meshmax
+
+		split str_Meshindex(cnt),";",str_Tricnt,str_Meshindex_temp
+		split str_Meshindex_temp,",",str_pridotA,str_pridotB,str_pridotC,str_pridotD
+ //B A
+ //C 
+
+ //  C
+ //A B
+		vecABCDno=3*str_pridotA,3*str_pridotB,3*str_pridotC
+		memcpy Triindex(Tricnt/3),vecABCDno,12
+ 		memcpy vxyz,vecxyz(dup_vecBno),24
+
+		fvset outer,dup_vx-vecxyz(dup_vecCno),dup_vy-vecxyz(dup_vecCno+1),dup_vz-vecxyz(dup_vecCno+2)
+		fvouter outer,-dup_vx+vecxyz(dup_vecAno),-dup_vy+vecxyz(dup_vecAno+1),-dup_vz+vecxyz(dup_vecAno+2)
+		fvunit outer
+		if (outer(1)>=WallSteepSlopes)>_wss{
+			if absf(outer(1))<WallVerticalRange {//壁
+				poke wall_f_list,Tricnt/9,2	
+			}else{//急斜面
+				poke wall_f_list,Tricnt/9,1
+			}	
+		}
+		memcpy mn_vecxyz(Tricnt/3),outer,24
+		MaterialList(Tricnt/9)=0+str_MaterialList(cnt)
+
+		memcpy Trivec_f(Tricnt),vecxyz_f(dup_vecAno),12
+		memcpy Trivec_f(Tricnt+3),vecxyz_f(dup_vecBno),12
+		memcpy Trivec_f(Tricnt+6),vecxyz_f(dup_vecCno),12
+		Tricnt+9
+		if  4=str_Tricnt {//4頂点だったので1ポリゴン増やす
+ //  A
+ //C D
+			dup_vecDno=3*str_pridotD
+			MaterialList(Tricnt/9)=0+str_MaterialList(cnt)
+
+			Triindex(Tricnt/3)=dup_vecCno,dup_vecDno,dup_vecAno	//頂点Dを使った3頂点
+
+ 			memcpy vxyz,vecxyz(dup_vecDno),24
+
+			fvset outer,dup_vx-vecxyz(dup_vecCno),dup_vy-vecxyz(dup_vecCno+1),dup_vz-vecxyz(dup_vecCno+2)
+			fvouter outer,dup_vx-vecxyz(dup_vecAno),dup_vy-vecxyz(dup_vecAno+1),dup_vz-vecxyz(dup_vecAno+2)
+			fvunit outer
+  			if (outer(1)>=WallSteepSlopes)>_wss {
+				if absf(outer(1))<WallVerticalRange {//壁
+					poke wall_f_list,Tricnt/9,2	
+				}else{//急斜面
+					poke wall_f_list,Tricnt/9,1
+				}	
+			}  
+			memcpy mn_vecxyz(Tricnt/3),outer,24
+
+			memcpy Trivec_f(Tricnt),vecxyz_f(dup_vecCno),12
+			memcpy Trivec_f(Tricnt+3),vecxyz_f(dup_vecDno),12
+			memcpy Trivec_f(Tricnt+6),vecxyz_f(dup_vecAno),12
+			Tricnt+9
+		}
+	loop
+
+	//splitで使用した配列のメモリクリア
+	str_vecxyz=0
+	str_Meshindex=0
+	str_MaterialList=0
+	str_Meshindex_temp=0
+
+//メッシュの大きさを取得
+	D3DXComputeBoundingBox vecxyz_f,vecmax,4*3,BoxMin,BoxMax
+	minx_d=ftd(BoxMin)
+	miny_d=ftd(BoxMin(1))
+	minz_d=ftd(BoxMin(2))
+	maxx_d=ftd(BoxMax)
+	maxy_d=ftd(BoxMax(1))
+	maxz_d=ftd(BoxMax(2))
+	
+//判定区域分割の為にポリゴンサイズを見て適当な分割サイズにする
+	Trimax=Tricnt/9
+	if pdsize=0.0 {
+		polysizex=0.0
+		polysizey=0.0
+		polysizez=0.0
+		repeat Trimax
+			cntp=cnt*9
+			vx1=absf((ftd(Trivec_f(cntp)))-(ftd(Trivec_f(cntp+3))))
+			//vy1=absf((ftd(Trivec_f(cntp+1)))-(ftd(Trivec_f(cntp+4))))
+			vz1=absf((ftd(Trivec_f(cntp+2)))-(ftd(Trivec_f(cntp+5))))
+
+			vx2=absf((ftd(Trivec_f(cntp+3)))-(ftd(Trivec_f(cntp+6))))
+			//vy2=absf((ftd(Trivec_f(cntp+4)))-(ftd(Trivec_f(cntp+7))))
+			vz2=absf((ftd(Trivec_f(cntp+5)))-(ftd(Trivec_f(cntp+8))))
+	 
+			if vx1>vx2 {if vx1>polysizex{polysizex=vx1+vx1*0.123}}else{if vx2>polysizex{polysizex=vx2+vx2*0.123}}
+			//if vy1>vy2 {if vy1>polysizey:polysizey=vy1}else{if vy2>polysizey:polysizey=vy2}
+			if vz1>vz2 {if vz1>polysizez{polysizez=vz1+vz1*0.123}}else{if vz2>polysizez{polysizez=vz2+vz2*0.123}}
+			polysize_xz=(polysizex+polysizez)*0.4
+
+			if polysizex>polysize_xz {
+				if polysizez>polysize_xz {
+					if polysizex<polysizez {polyscale=1000.0/polysizex:polysize=int(polysizez*polyscale*2)}else{polyscale=1000.0/polysizez:polysize=int(polysizex*polyscale*2)}
+					
+					break
+				}
+			}
+
+		loop
+		if polyscale=0.0 {polyscale=1000.0/polysizey:polysize=int(polysizey*polyscale*2)}
+	}else{
+
+		polysizex=pdsize/2.0+pdsize*0.123
+		polysizey=polysizex
+		polysizez=polysizex
+		polyscale=1000.0/polysizex
+		polysize=int(polysizez*polyscale*2)
+
+	}
+		divs_temp=abs((maxz_d-minz_d)*polyscale/polysize)*abs((maxx_d-minx_d)*polyscale/polysize)
+		
+		if divs_temp>=5000000 {//
+			dialog "分割数が "+500+"万を超えました"+strf("(%d万以上)",divs_temp/10000)+"\n一次作業メモリに"+strf(" %.1fメガ ",(74.0*divs_temp/1048576)*2)+"近く必要です。\n続けますか？",3
+			if stat=7 {
+				await 0
+				cls
+				mes "データ化作業を中断して終了します。"
+				await 3000
+				end
+			}
+		}
+	
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		pos 30,debgmesy
+		mes "判定区域分割サイズ"
+		debgmesy+=ginfo_mesy
+		pos 30+ginfo_mesx,debgmesy-ginfo_mesy
+		color 255
+		mes "："+((1.0*polysize)/polyscale)
+	#endif
+#endif		
+//メッシュの大きさを判定区域サイズ分大きくする（外周の境界線の処理が面倒になる可能性があるので）
+	minx=minx_d-(0.5*polysize)/polyscale
+	miny=miny_d-(0.5*polysize)/polyscale
+	minz=minz_d-(0.5*polysize)/polyscale
+	
+	maxx=maxx_d+(1.0*polysize)/polyscale
+	maxy=maxy_d+(1.0*polysize)/polyscale
+	maxz=maxz_d+(1.0*polysize)/polyscale
+
+//メッシュの大きさを基に判定区域XZの最大数を算出
+	gmax_x=abs(((maxx-minx)*polyscale)/polysize)	//X方向
+	gmax_z=abs(((maxz-minz)*polyscale)/polysize)	//Z方向
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		color 
+		pos 30,debgmesy
+		mes "区分け数 "
+		debgmesy+=ginfo_mesy
+		color 255
+		pos 20+ginfo_mesx,debgmesy-ginfo_mesy
+		mes " X="+gmax_x+" Z="+gmax_z+strf(" [%.2fMの作業メモリを使用]",(64.0*gmax_x*gmax_z/1024/1024))
+	#endif
+#endif
+		maploop=0,-1,-gmax_x,1,gmax_x
+
+	dim mapcnt,gmax_x,gmax_z
+	dim maptemp,gmax_x,gmax_z
+	
+	dupptr dup_maptemp,varptr(maptemp),gmax_x*gmax_z*4,4
+	memset dup_maptemp,1,gmax_x*gmax_z*4,0
+	sdim mapTrilist,64,gmax_x*gmax_z
+
+	ddim mapy,gmax_x*gmax_z
+	dupptr dup_mapcnt,varptr(mapcnt),gmax_x*gmax_z*4,4
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		TriRate=300.0/Trimax
+		color 
+		pos 30,debgmesy
+		mes ""+Trimax+"枚のポリゴンを区分け処理中"
+		debgmesy+=ginfo_mesy
+		boxf 0,debgmesy,300,debgmesy+30
+	#endif
+#endif
+
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&128)=0
+
+		sizx=(maxx-minx)
+		sizz=(maxz-minz)
+		if sizx>sizz {linscal=200.0/(polysize*gmax_x)}else{linscal=200.0/(polysize*gmax_z)}
+		color 60,60,0
+		lineajx=430.0
+		 
+		boxf lineajx,line_db_y,lineajx+linscal*polysize*gmax_x,line_db_y+linscal*polysize*gmax_z
+		color 
+
+		repeat gmax_x+1
+			line lineajx+linscal*polysize*cnt,line_db_y,lineajx+linscal*polysize*cnt,line_db_y+linscal*polysize*gmax_z
+		loop
+		repeat gmax_z+1
+			line lineajx,line_db_y+linscal*polysize*cnt,lineajx+linscal*polysize*gmax_x,line_db_y+linscal*polysize*cnt
+		loop
+
+	#endif
+#endif	
+	gosub *_TriDvi
+	dim maptemp,1
+
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+
+		color 0,0,255
+		boxf 0,debgmesy,300,debgmesy+30
+		debgmesy+=40
+
+	#endif
+#endif	
+	
+	dat_copy_f=1
+	gosub	*_datset_	//初期データセット,コピー
+
+	dupptr dup_mapcnt,varptr(Terraindata_mapcnt(tid)),gmax_x*gmax_z*4,4
+	dupptr dup_Terraindata_Trilistptr,varptr(Terraindata_Trilistptr(tid)),gmax_x*gmax_z*4,4
+		
+	index=0
+	repeat gmax_x*gmax_z
+		memcpy Terraindata_Trilist(tid),mapTrilist(cnt),dup_mapcnt(cnt)*4,index,0
+		dup_Terraindata_Trilistptr(cnt)=index
+		index+=dup_mapcnt(cnt)*4
+	loop
+	dim mapTrilist,1	//これをやっても sdim mapTrilist,64,gmax_x*gmax_z と同じ効果しかない・・・sdim以外再利用できない気がする・・・
+
+	if loadf {
+		gosub *_TerrainDataSave
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		if _strsize>0 {
+			pos 0,debgmesy
+			mes "セーブ完了"
+		}else{
+			pos 0,debgmesy
+			mes "セーブ失敗"
+		}
+		debgmesy+=ginfo_mesy
+
+	#endif
+#endif	
+		
+		_stat_=1
+		_xfilnam=xfilnam+"_"+str(pdsize)+"_.coldat"
+
+		}else{
+			pos 0,debgmesy
+			mes ""
+			debgmesy+=ginfo_mesy
+			_stat_=0
+			_xfilnam=""
+	}
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&192)!192
+		repeat
+			await 16
+			stick stk,64
+			if stk!64 {break}
+		loop
+	#endif
+#endif	
+	
+	mref _stat,64
+	_stat=_stat_
+return _xfilnam
+
+
+*_TerrainDataSave
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+
+
+		color 
+		pos 0,debgmesy
+		mes xfilnam+"_"+str(pdsize)+"_.coldat"
+		debgmesy+=ginfo_mesy
+		mes "セーブ中"
+		debgmesy+=ginfo_mesy
+
+	#endif
+#endif	
+	
+	dim colsavedat,21+gmax_x*gmax_z*1+gmax_x*gmax_z*1+Tricnt*1+vecmax*2*3+Trimax*1*3+Trimax*2*3+gmax_x*gmax_z*2+total*1+Trimax*4+((Tricnt/9)+3)/4
+
+	colsavedat=gmax_x,gmax_z,Tricnt,vecmax,Trimax,total,polysize
+	dupptr dup_colsavedat_d,varptr(colsavedat(7)),8*7,3
+	dup_colsavedat_d=minx,miny,minz,maxx,maxy,maxz,polyscale
+
+	memcpy colsavedat(21),Terraindata_mapcnt(tid),gmax_x*gmax_z*4,0,0
+	memcopyindex=gmax_x*gmax_z*4
+
+	memcpy colsavedat(21),Terraindata_Trivec_f(tid),Tricnt*4,memcopyindex,0
+	memcopyindex+=Tricnt*4
+
+	memcpy colsavedat(21),Terraindata_Triindex(tid),Trimax*4*3,memcopyindex,0
+	memcopyindex+=Trimax*4*3
+
+	memcpy colsavedat(21),Terraindata_Trilist(tid),index,memcopyindex,0
+	memcopyindex+index
+
+	memcpy colsavedat(21),dup_Terraindata_Trilistptr,gmax_x*gmax_z*4,memcopyindex,0
+	memcopyindex+=gmax_x*gmax_z*4
+
+	memcpy colsavedat(21),Terraindata_MaterialList(tid),Trimax*4,memcopyindex,0
+	memcopyindex+=Trimax*4
+
+	memcpy colsavedat(21),Terraindata_vecxyz(tid),vecmax*8*3,memcopyindex,0
+	memcopyindex+=vecmax*8*3
+
+	memcpy colsavedat(21),Terraindata_mn_vecxyz(tid),Trimax*8*3,memcopyindex,0
+
+	memcopyindex+=Trimax*8*3
+
+	memcpy colsavedat(21),Terraindata_mapy(tid),gmax_x*gmax_z*8,memcopyindex,0
+	memcopyindex+=gmax_x*gmax_z*8
+
+
+	memcpy colsavedat(21),Terraindata_wall_f_list(tid),Tricnt/9,memcopyindex,0
+	memcopyindex+=(((Tricnt/9)+3)/4)*4
+
+	memcopyindex+=7*4+7*8
+
+	bsave xfilnam+"_"+str(pdsize)+"_.coldat",colsavedat,memcopyindex
+	_strsize=strsize
+	dim colsavedat,1
+return
+	
+*_TriDvi
+	tri_limes=limit(3-Trimax/4000,1,3)
+	size_y_d=(maxy_d-miny_d)
+	if size_y_d>0.0 {size_y_d=35.0/size_y_d}
+//ポリゴンを判定区域に分割する
+	repeat Trimax
+		i=cnt
+		ii=cnt*9
+		tpsizex=0.0
+		tpsizez=0.0
+		doty=0.0
+		
+//頂点の原点をずらし0以上にして判定区域用の座標にする
+		repeat 3
+			dup dup_Trivec_xyz_f,Trivec_f(ii+cnt*3)
+			if doty>ftd(dup_Trivec_xyz_f(1)) {doty=ftd(dup_Trivec_xyz_f(1))}	//判定時に高さで振り分けるために3頂点の一番上にある座標を取得
+
+			dotx=(ftd(dup_Trivec_xyz_f)-minx)//扱いやすいように0以上にする
+			dotz=(ftd(dup_Trivec_xyz_f(2))-minz)
+			tpsizex+dotx
+			tpsizez+dotz
+			_sx1(cnt)=0+dotx*polyscale	//判定区域用の座標に変換して
+			_sy1(cnt)=0+dotz*polyscale
+			_sx2((cnt+1)\3)=_sx1(cnt)	//3頂点を結ぶように配列化（_sx1(0),_sy1(0)から_sx2(0),_sy2(0)が頂点Aから頂点Cを結ぶ形になる）
+			_sy2((cnt+1)\3)=_sy1(cnt)
+		loop
+
+		//3頂点をラインとして接触してる判定区域を全て取得
+		FindGridLineAll line_col,maptemp,  _sx1,  _sy1,  _sx2, _sy2, polysize,3,0//,gmax_x,gmax_z
+//取得された区域にポリゴンNOを追加
+		repeat stat
+			addi=line_col(cnt)
+			repeat dup_mapcnt(addi)
+				if i = lpeek(mapTrilist(addi),cnt*4){addi=-1:break}//既に同じNOが無いか検索
+			loop
+			
+			if addi>=0 {//同じ物はなかったので追加
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&128)=0
+
+		if mn_vecxyz(i*3+1)<=0.0 {
+			hsvcolor 130.0+doty*size_y_d,255,255
+			repeat tri_limes
+				line (linscal*_sx1(cnt))+lineajx,  (linscal*_sy1(cnt))+line_db_y,  (linscal*_sx2(cnt))+lineajx, (linscal*_sy2(cnt))+line_db_y
+			loop
+		}
+
+	#endif
+#endif	
+				lpoke mapTrilist(addi),dup_mapcnt(addi)*4,i
+				dup_mapcnt(addi)++
+				if doty<mapy(addi){mapy(addi)=doty}//この区域で一番高いY座標を保存（スクリーン座標からレイを飛ばして判定する場合直線上のポリゴン全てを判定することになるので高さで振り分けるため）
+				if (dup_mapcnt(addi)\16)=0 {//16ポリゴン毎（64バイト）に配列のサイズを増やす
+					memexpand mapTrilist(addi),(dup_mapcnt(addi)+16)*4
+				}
+			}
+		loop
+
+		mix=0+(tpsizex*polyscale/3)/polysize	//3頂点の平均位置
+		miy=0+(tpsizez*polyscale/3)/polysize
+
+ 		addi=mix+(gmax_x*miy)	//平均位置の区域
+ 	//三角形の中に判定区域が完全に入ってしまうと判定時に抜けてしまうので平均位置の区域にも追加
+//（判定区域のサイズを大きくすれば必要無いが一つの区域のポリゴン数が増えるので判定時の処理が重くなる）
+//（かと言って小さくしすぎると抜けが出来たり判定区域の検索数が増えるのでスクリーンからレイを飛ばす判定が重くなる）
+		repeat dup_mapcnt(addi)
+			if i = lpeek(mapTrilist(addi),cnt*4){addi=-1:break}
+		loop
+		if addi>=0 {
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&128)=0
+
+		if mn_vecxyz(i*3+1)<=0.0 { 
+			hsvcolor 130.0+doty*size_y_d,255,255
+			pset linscal*(tpsizex*polyscale/3)+lineajx,linscal*(tpsizez*polyscale/3)+line_db_y
+		}
+
+	#endif
+#endif
+				lpoke mapTrilist(addi),dup_mapcnt(addi)*4,i
+			dup_mapcnt(addi)++ 
+			if doty<mapy(addi){mapy(addi)=doty}
+			if (dup_mapcnt(addi)\16)=0 {
+				memexpand mapTrilist(addi),(dup_mapcnt(addi)+16)*4
+			}
+		} 
+
+		if (cnt\100)=0 { 
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0
+		color 0,0,255:boxf 0,debgmesy,TriRate*cnt,debgmesy+30
+	#endif
+#endif	
+			await 0
+		} 
+
+
+	loop
+
+//判定区域に保存されたポリンゴンNOの総数をtotalに代入
+	total=0
+	repeat gmax_x*gmax_z
+		total+dup_mapcnt(cnt)
+	loop
+
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&64)=0	
+		color 200,32,64
+		gs_db=linscal*polysize
+		gs_db1=gs_db+1
+		repeat  gmax_x*gmax_z
+			if dup_mapcnt(cnt)=0 {
+				gradf lineajx+gs_db*(cnt\gmax_x),line_db_y+gs_db*(cnt/gmax_x),gs_db1,gs_db1
+			}
+		loop
+	#endif
+#endif		
+return
+*_datset_
+	//処理結果をIDで管理するために別配列に全てコピーするためにメモリ確保
+	if vartype(Terraindata_mapcnt)=4 {
+
+		sdim Terraindata_mapcnt,64,tid+1
+		sdim Terraindata_Trilistptr,64,tid+1
+		sdim Terraindata_Trivec_f,64,tid+1
+		sdim Terraindata_vecxyz,64,tid+1
+		sdim Terraindata_Triindex,64,tid+1
+		sdim Terraindata_mn_vecxyz,64,tid+1
+		sdim Terraindata_mapy,64,tid+1
+
+		sdim Terraindata_Trilist,64,tid+1
+		sdim Terraindata_hitf,64,tid+1
+		
+		sdim Terraindata_MaterialList,64,tid+1
+		sdim Terraindata_wall_f_list,64,tid+1
+
+
+		ddim Terrain_minx,tid+1
+		ddim Terrain_miny,tid+1
+		ddim Terrain_minz,tid+1
+		ddim Terrain_maxx,tid+1
+		ddim Terrain_maxy,tid+1
+		ddim Terrain_maxz,tid+1
+		ddim Terrain_polyscale,tid+1
+
+	}
+
+	if dat_copy_f {
+		memexpand Terraindata_mapcnt(tid),gmax_x*gmax_z*4
+		memcpy Terraindata_mapcnt(tid),mapcnt,gmax_x*gmax_z*4,0,0
+		dim mapcnt,1
+
+		memexpand Terraindata_Trivec_f(tid),Tricnt*4
+		memcpy Terraindata_Trivec_f(tid),Trivec_f,Tricnt*4,0,0
+		dim Trivec_f,1
+		
+		memexpand Terraindata_vecxyz(tid),vecmax*8*3
+		memcpy Terraindata_vecxyz(tid),vecxyz,vecmax*8*3,0,0
+		dim vecxyz,1
+
+		memexpand Terraindata_mn_vecxyz(tid),Trimax*8*3
+		memcpy Terraindata_mn_vecxyz(tid),mn_vecxyz,Trimax*8*3,0,0
+		dim mn_vecxyz,1
+
+		memexpand Terraindata_Triindex(tid),Trimax*4*3
+		memcpy Terraindata_Triindex(tid),Triindex,Trimax*4*3,0,0
+		dim Triindex,1
+		
+		memexpand Terraindata_mapy(tid),gmax_x*gmax_z*8
+		memcpy Terraindata_mapy(tid),mapy,gmax_x*gmax_z*8,0,0
+		dim mapy,1
+		
+		memexpand Terraindata_MaterialList(tid),Trimax*4
+		memcpy Terraindata_MaterialList(tid),MaterialList,Trimax*4,0,0
+		dim MaterialList,1
+		
+		memexpand Terraindata_wall_f_list(tid),(Tricnt/9)
+		memcpy Terraindata_wall_f_list(tid),wall_f_list,Tricnt/9,0,0
+		dim wall_f_list,1
+	}else{
+		memexpand Terraindata_mapcnt(tid),gmax_x*gmax_z*4
+		memexpand Terraindata_Trivec_f(tid),Tricnt*4
+		memexpand Terraindata_vecxyz(tid),vecmax*8*3
+		memexpand Terraindata_mn_vecxyz(tid),Trimax*8*3
+		memexpand Terraindata_Triindex(tid),Trimax*4*3
+		memexpand Terraindata_mapy(tid),gmax_x*gmax_z*8
+		memexpand Terraindata_MaterialList(tid),Trimax*4
+		memexpand Terraindata_wall_f_list(tid),(Tricnt/9)
+	}
+
+	memexpand Terraindata_Trilistptr(tid),gmax_x*gmax_z*4
+	memexpand Terraindata_Trilist(tid),total*4
+	memexpand Terraindata_hitf(tid),(Tricnt/9)
+	
+
+	Terrain_minx(tid)=minx
+	Terrain_miny(tid)=miny
+	Terrain_minz(tid)=minz
+	Terrain_maxx(tid)=maxx
+	Terrain_maxy(tid)=maxy
+	Terrain_maxz(tid)=maxz
+	Terrain_polyscale(tid)=polyscale
+
+	Terrain_gmax_x(tid)=gmax_x
+	Terrain_gmax_z(tid)=gmax_z
+	Terrain_Tricnt(tid)=Tricnt
+	Terrain_vecmax(tid)=vecmax
+	Terrain_Trimax(tid)=Trimax
+
+	Terrain_total(tid)=total
+	Terrain_polysize(tid)=polysize
+
+return
+
+//[---Terrainデータの壁と急斜面フラグを再設定---]
+//setTerrainWallSlopes tid, wss
+// tid = 地形ID「loadTerrainで使用したID」
+// wss = 壁と急斜面のポリゴンにフラグを設定するか（省略時0）「0=設定する、1=設定しない　(設定すると同じデータで壁と地面を別けて判定出来て処理の軽減になります)」
+#deffunc setTerrainWallSlopes int tid,int wss
+	dupptr dup_Terraindata_mn_vecxyz_ws,varptr(Terraindata_mn_vecxyz(tid)),Terrain_Trimax(tid)*24,3
+	dupptr dup_Terraindata_wall_f_list_ws,varptr(Terraindata_wall_f_list(tid)),Terrain_Tricnt(tid)/9,2
+	memset dup_Terraindata_wall_f_list_ws,0,(Terrain_Tricnt(tid)/9),0
+
+	dup dup_RayAngx_ws,tangx(tid):dup dup_RayAngy_ws,tangy(tid):dup dup_RayAngz_ws,tangz(tid)
+	dup dup_oscx_ws,tsclx(tid):dup dup_oscy_ws,tscly(tid):dup dup_oscz_ws,tsclz(tid)
+
+	if tlo_g_list(tid)>=0 { 
+		dup dup_tid_oid_ws,tlo_g_list(tid)
+		getang dup_tid_oid_ws,dup_RayAngx_ws,dup_tPosy_ws,dup_RayAngz_ws
+		getscale dup_tid_oid_ws,dup_oscx_ws,dup_oscy_ws,dup_oscz_ws
+	}
+
+	ddim fv_mn,4
+	repeat Terrain_Tricnt(tid)/9
+		fv_mn=dup_RayAngx_ws,dup_RayAngy_ws,dup_RayAngz_ws
+		dup dup_T_mn_ws,dup_Terraindata_mn_vecxyz_ws(cnt*3)
+		fvdir fv_mn,dup_T_mn_ws/dup_oscx_ws,dup_T_mn_ws(1)/dup_oscy_ws,dup_T_mn_ws(2)/dup_oscz_ws
+		fvunit fv_mn
+		if (fv_mn(1)>=WallSteepSlopes)>wss {
+			if absf(fv_mn(1))<WallVerticalRange {//壁
+				poke dup_Terraindata_wall_f_list_ws,cnt,2
+			}else{//急斜面
+				poke dup_Terraindata_wall_f_list_ws,cnt,1
+			}	
+		} 
+	loop
+return
+
+//[---Terrainデータを垂直判定、衝突してた場合地面と天井から押し出した移動量にMoveVecを変更---]
+//getMovTerrainGroundCol tid, Posfeetx, Posfeety, Posfeetz, MoveVec, Step, tall, poly_no, gf, mtgcf
+// tid = 地形ID「loadTerrainで使用したID」
+// Posfeetx = 足元の位置X座標(入力)「キャラの足元座標入力」
+// Posfeety = 足元の位置Y座標(入力)「キャラの足元座標入力」
+// Posfeetz = 足元の位置Z座標(入力)「キャラの足元座標入力」
+// MoveVec = 移動ベクトル(3要素配列入出力)「XYZの移動量」
+// Step = 壁と認識されない地形を乗り越える高さ(入力)「TerrainWallのとは意味が違うけど、効果としては似てる」
+// tall = キャラの高さ(入力)「Posfeety-tallから下方向を判定する」
+// poly_no = 地面のポリゴンナンバー(入出力)「入力=前回の地面のナンバー(無ければ-1を入力)、出力=空中でも下にある一番近い面のナンバーを返す、-1なら検索範囲に何も無かった」
+// gf = 地面に接地してた and 接地したかのフラグ(入出力)「0=空中、1=接地		このフラグは斜面を下る時に浮かないように処理するのに使われる」
+// mtgcf = 除外されてる壁も判定処理するか(入力)「0=しない、1=する」
+//返り値1：statに判定結果が返る「-2=その区域に何もない、-1=データ範囲外、0=衝突なし、1=下方向に衝突、2=上方向に衝突、3=上下両方衝突,8=何らかの事情(上下に挟まれた等)でXZ移動量を0にした」
+//返り値2：refdvalに地面のY座標が返る（影に使える）
+//「地面の法線はArrTerrainNormal()、内積はvarTerrainTriInnerで取得出来る」
+ #deffunc getMovTerrainGroundCol int tid,double Posfeetx,double Posfeety,double Posfeetz,array MoveVec,double Step,double tall,var poly_no,var gf,int mtgcf,local ud,local Buried
+	f_UV=0,0
+	poly_no_bak=poly_no
+	poly_no=-1
+	poly_no2=-1
+	poly_no3=-1
+	inner=0.0
+#ifdef mod_hgCnvRayCol_debug@
+#if (mod_hgCnvRayCol_debug@&1)=0
+	hit_cnt_total2@=0
+#endif
+#endif
+	gray=0.00001,1.0,-0.00001		//垂直だとライン上の判定が不安定なので補正
+	hit_Ground_cnt_list=0
+	_Sticky=Sticky*gf
+	if tid ! tid_bak {tid_bak=tid
+		gmax_xz=Terrain_gmax_x(tid)*Terrain_gmax_z(tid)*4
+		dupptr dup_Terraindata_mapcnt,varptr(Terraindata_mapcnt(tid)),gmax_xz,4
+		dupptr dup_Terraindata_Trilistptr,varptr(Terraindata_Trilistptr(tid)),gmax_xz,4
+		dupptr dup_Terraindata_Trivec_f,varptr(Terraindata_Trivec_f(tid)),Terrain_Tricnt(tid)*4,4
+		dupptr dup_Terraindata_vecxyz,varptr(Terraindata_vecxyz(tid)),Terrain_vecmax(tid)*8*3,3
+		dupptr dup_Terraindata_Triindex,varptr(Terraindata_Triindex(tid)),Terrain_Trimax(tid)*4*3,4
+		dupptr dup_Terraindata_mn_vecxyz,varptr(Terraindata_mn_vecxyz(tid)),Terrain_Trimax(tid)*8*3,3
+		Terraindata_Trilist_varptr=varptr(Terraindata_Trilist(tid))
+		dupptr dup_Terraindata_hitf,varptr(Terraindata_hitf(tid)),Terrain_Tricnt(tid)/9,4
+		dupptr dup_Terraindata_mapy,varptr(Terraindata_mapy(tid)),gmax_xz*2,3
+		dupptr dup_Terraindata_MaterialList,varptr(Terraindata_MaterialList(tid)),Terrain_Trimax(tid)*4,4
+
+	dup dup_tPosx,tposx(tid):dup dup_tPosy,tposy(tid):dup dup_tPosz,tposz(tid)
+	dup dup_RayAngx,tangx(tid):dup dup_RayAngy,tangy(tid):dup dup_RayAngz,tangz(tid)
+
+	dup dup_oscx,tsclx(tid):dup dup_oscy,tscly(tid):dup dup_oscz,tsclz(tid)
+
+	} 
+
+	
+	if tlo_g_list(tid)>=0 { 
+		dup dup_tid_oid,tlo_g_list(tid)
+		getpos dup_tid_oid,dup_tPosx,dup_tPosy,dup_tPosz
+		
+		getang dup_tid_oid,dup_RayAngx,dup_RayAngy,dup_RayAngz
+		getscale dup_tid_oid,dup_oscx,dup_oscy,dup_oscz
+	}
+
+	_RayPosx=(Posfeetx-dup_tPosx+MoveVec)
+	if MoveVec(1)>0.0 {_RayPosy=(Posfeety-dup_tPosy)-tall:addtall=tall+MoveVec(1)}else{_RayPosy=(Posfeety-dup_tPosy+MoveVec(1))-tall:addtall=-MoveVec(1)-tall}
+	_RayPosz=(Posfeetz-dup_tPosz+MoveVec(2))
+
+	LocalRotRay _RayPosx, _RayPosy, _RayPosz,dup_RayAngx, dup_RayAngy, dup_RayAngz,gray
+
+	fvdiv  gray,dup_oscx,dup_oscy,dup_oscz
+	
+	_RayPosx/dup_oscx
+	_RayPosy/dup_oscy
+	_RayPosz/dup_oscz
+
+ 
+	fvset RayDir_,gray,gray(1),gray(2)
+	modhg_setVec4 f_RayPos,_RayPosx,_RayPosy,_RayPosz,0.0
+
+	mref _stat,64
+	
+	f_Dist=0
+	hitrang3=tall*3
+	hitrang=GroundRange
+	Ground_Limit=hitrang
+	Ceiling_hitrang=-999999.999
+	Buried_hitrang=-999999.999
+
+	modhg_setVec4 f_RayDir,gray,gray(1),gray(2),0.0
+	modhg_setVec4 f_RayDir_r,-gray,-gray(1),-gray(2),0.0
+
+ 	if mtgcf&1 {
+		memset dup_Terraindata_hitf,0,(Terrain_Tricnt(tid)/9),0
+	}else{ 
+		memcpy dup_Terraindata_hitf,Terraindata_wall_f_list(tid),Terrain_Tricnt(tid)/9,0,0
+	}
+		hitrang2=0.0
+
+
+	 if dup_RayAngx!0.0 or dup_RayAngz!0.0 {
+		cpxx=Terrain_polyscale(tid)*(_RayPosx-Terrain_minx(tid))
+		cpxz=Terrain_polyscale(tid)*(_RayPosz-Terrain_minz(tid))
+
+		sx1=0+cpxx
+		sy1=0+cpxz
+		fvset zeroxyz,gray,gray(1),gray(2)
+
+		fvmul zeroxyz,hitrang,hitrang,hitrang
+		fvadd zeroxyz,_RayPosx,_RayPosy,_RayPosz
+
+		sx2=0+((zeroxyz-Terrain_minx(tid))*Terrain_polyscale(tid))
+		sy2=0+((zeroxyz(2)-Terrain_minz(tid))*Terrain_polyscale(tid))
+		skyp=0
+		ClipLine sx1,sy1, sx2, sy2, Terrain_gmax_x(tid)*Terrain_polysize(tid)-1,Terrain_gmax_z(tid)*Terrain_polysize(tid)-1
+		if stat {_stat=-1 :gf=0: return 999999.999}
+
+		FindGridLine mapno,dup_Terraindata_mapcnt,  sx1,  sy1,  sx2, sy2, Terrain_polysize(tid),0,Terrain_gmax_x(tid),Terrain_gmax_z(tid)
+		if stat > 0 {gloop=-1}else{_stat=-2 :gf=0: return 999999.999}
+
+	}else{
+		mapno=(0+Terrain_polyscale(tid)*(_RayPosx-Terrain_minx(tid)))/Terrain_polysize(tid)+((0+Terrain_polyscale(tid)*(_RayPosz-Terrain_minz(tid)))/Terrain_polysize(tid))*Terrain_gmax_x(tid)
+		if mapno>=(gmax_xz/4) or mapno<0{_stat=-1 :gf=0: return 999999.999}
+		if dup_Terraindata_mapcnt(mapno)=0 {_stat=-2 :gf=0: return 999999.999}
+		dupptr dup_mapTrilist,Terraindata_Trilist_varptr+dup_Terraindata_Trilistptr(mapno),dup_Terraindata_mapcnt(mapno)*4,4
+		gloop=1
+	}
+		fvunit gray
+
+	repeat gloop
+		if gloop<0{
+			dupptr dup_mapTrilist,Terraindata_Trilist_varptr+dup_Terraindata_Trilistptr(mapno),dup_Terraindata_mapcnt(mapno)*4,4
+		}
+		repeat dup_Terraindata_mapcnt(mapno)
+			pno=dup_mapTrilist(cnt)	//Terraindata_Trivec_fが3頂点XYZ座標で1ポリゴン9要素使用してるので9倍
+			if peek(dup_Terraindata_hitf,pno)<2 {
+				poke dup_Terraindata_hitf,pno,2	
+				pno*9
+
+				D3DXIntersectTri dup_Terraindata_Trivec_f(pno),dup_Terraindata_Trivec_f(pno+3),dup_Terraindata_Trivec_f(pno+6),f_RayPos,f_RayDir,f_U,f_V,f_Dist
+				if stat {
+					polyno=pno/3	//Terraindata_mn_vecxyzは面毎にXYZベクトルなので9倍されてるインデックスを割る3
+					FloatToDouble f_Dist
+					inner=gray*dup_Terraindata_mn_vecxyz(polyno)+gray(1)*dup_Terraindata_mn_vecxyz(polyno+1)+gray(2)*dup_Terraindata_mn_vecxyz(polyno+2)
+					if inner>=0.0 {
+						if inner!0.0{
+							if getDouble<=(tall+Step) {
+								inner_Confirm2=inner
+								poly_no2=polyno
+								hitrang2=getDouble
+								f_UV2=f_U,f_V
+								ud |= 2
+
+							}
+						}
+					}else{//表
+						if getDouble<Ground_Limit {
+							inner_Confirm_Stock(hit_Ground_cnt)=inner
+							poly_no_Stock(hit_Ground_cnt)=polyno
+							hitrang_Stock(hit_Ground_cnt)=getDouble
+							f_UV_Stock(hit_Ground_cnt*2)=f_U,f_V
+					
+							hit_Ground_cnt++
+
+							repeat hit_Ground_cnt
+								if getDouble<hitrang(cnt) {
+
+									repeat hit_Ground_cnt-cnt,cnt
+										hitrang(cnt+1)=hitrang(cnt)
+										hit_Ground_cnt_list(cnt+1)=hit_Ground_cnt_list(cnt)
+									loop
+									hit_Ground_cnt_list(cnt)=hit_Ground_cnt-1
+
+									hitrang(cnt)=getDouble
+									break
+								}else{
+									if cnt=(hit_Ground_cnt-1) {hit_Ground_cnt_list(hit_Ground_cnt)=hit_Ground_cnt-1:hitrang(hit_Ground_cnt)=getDouble}
+								}
+
+							loop
+
+						}
+			
+
+					}
+				}else{
+					D3DXIntersectTri dup_Terraindata_Trivec_f(pno),dup_Terraindata_Trivec_f(pno+3),dup_Terraindata_Trivec_f(pno+6),f_RayPos,f_RayDir_r,f_U,f_V,f_Dist
+					if stat {
+						polyno=pno/3
+						FloatToDouble f_Dist//天井までの距離
+						inner=-gray*dup_Terraindata_mn_vecxyz(polyno)-gray(1)*dup_Terraindata_mn_vecxyz(polyno+1)-gray(2)*dup_Terraindata_mn_vecxyz(polyno+2)
+						if inner<=0.0 {
+							if getDouble<hitrang3 {
+								inner_Confirm3=inner
+								poly_no3=polyno
+								hitrang3=getDouble
+								f_UV3=f_U,f_V
+
+								ud |= 4
+
+							}else{
+								
+								if -getDouble>Ceiling_hitrang {
+									Ceiling=1
+									Ceiling_hitrang=-getDouble
+								}
+							}
+						}else{
+						if inner!0.0{
+
+							if -getDouble>Buried_hitrang {
+								Buried=1
+
+							Buried_hitrang=-getDouble
+						}
+					}
+
+						}
+					}
+
+				}
+
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&1)=0
+
+
+	if polyno=pno/3 {
+		tnolist(hit_cnt_total2@)=polyno | $80000000 
+		tmapnolist(hit_mapcnt_total2@)=mapno
+		hit_mapcnt_total2@++
+	}else{
+		tnolist(hit_cnt_total2@)=pno/3
+	}
+	hit_cnt_total2@++
+	#endif
+#endif
+  
+			}
+
+
+		loop
+		if gloop=1 {break}
+		NextGridLine mapno
+		if stat <=0 {break}
+	loop
+		hight_f=0
+	if hit_Ground_cnt {
+
+		if hitrang<hitrang2 {//天井より一番上の地上面の方が上になったので
+				//乗れるかチェック
+				if ((tall-hitrang+Gap)>=hitrang3) or (hitrang<(tall-Step-Gap)){//更に上の天井に衝突する or Stepより高くて乗れないから一段下の地上面を選択
+
+					if hit_Ground_cnt>1 {//下の地上面があった
+						hitrang=hitrang(1)//下の地上面を地上として距離を取得
+						hit_Ground_cnt=hit_Ground_cnt_list(1)	//選択した地上面のインデックス取得
+
+						inner_Confirm=inner_Confirm_Stock(hit_Ground_cnt)	//記録しておいた各種データ取り出し
+						poly_no=poly_no_Stock(hit_Ground_cnt)
+						f_UV=f_UV_Stock(hit_Ground_cnt*2),f_UV_Stock(hit_Ground_cnt*2+1)
+
+						ud |= 1	//天井フラグは残したまま地上フラグを設定
+
+					}else{//下の面が無かったので最初の天井に衝突したとみなす
+						ud & 2	//地上(1)と衝突してない天井(4)のフラグ削除
+
+					}
+
+				}else{//一番上の地上面を地上として設定
+					inner_Confirm=inner_Confirm_Stock(hit_Ground_cnt_list)
+					poly_no=poly_no_Stock(hit_Ground_cnt_list)
+					f_UV=f_UV_Stock(hit_Ground_cnt_list*2),f_UV_Stock(hit_Ground_cnt_list*2+1)
+					ud = 1	//天井のフラグ削除して地上ウラグのみにする
+					hitrang2=0.0
+				}
+
+		}else{
+ 			if (ud & 4)>0 and (ud & 2)=0{
+				if (limitf(tall-hitrang,0.0,tall)+Gap*2)>=hitrang3 {
+
+					inner_Confirm2=inner_Confirm3
+					poly_no2=poly_no3
+					hitrang2=-hitrang3
+					f_UV2=f_UV3,f_UV3(1) 
+					ud = 2
+
+				}else{
+					hitrang2=0.0
+					ud = 0
+				}
+			} else{	ud & 3
+
+				
+			}
+
+			inner_Confirm=inner_Confirm_Stock(hit_Ground_cnt_list)
+			poly_no=poly_no_Stock(hit_Ground_cnt_list)
+			f_UV=f_UV_Stock(hit_Ground_cnt_list*2),f_UV_Stock(hit_Ground_cnt_list*2+1)
+			ud |= 1
+
+		}
+		hit_Ground_cnt=0
+			
+	}
+
+	if ud {
+		
+		if ud & 2{	
+			if (hitrang-hitrang2)<(tall-Gap*2){	
+				hight_f=1
+			}
+		}
+		if ud & 1{
+			if hitrang<(tall+MoveVec(1)+_Sticky+Gap*2){//接地
+				if hight_f{//上下に挟まれたのでXZ座標は移動前に戻す
+					ud=11
+					MoveVec=0.0
+					MoveVec(2)=0.0
+					if poly_no_bak>=0 {
+						pno=poly_no_bak*9
+						_RayPosx=(Posfeetx-dup_tPosx)
+						if MoveVec(1)>0.0 {_RayPosy=(Posfeety-dup_tPosy)-tall}else{_RayPosy=(Posfeety-dup_tPosy+MoveVec(1))-tall}
+						_RayPosz=(Posfeetz-dup_tPosz)
+
+						LocalRotXYZ _RayPosx, _RayPosy, _RayPosz,dup_RayAngx, dup_RayAngy, dup_RayAngz
+	
+						_RayPosx/dup_oscx
+						_RayPosy/dup_oscy
+						_RayPosz/dup_oscz
+
+						modhg_setVec4 f_RayPos,_RayPosx,_RayPosy,_RayPosz,0.0
+
+						D3DXIntersectTri dup_Terraindata_Trivec_f(pno),dup_Terraindata_Trivec_f(pno+3),dup_Terraindata_Trivec_f(pno+6),f_RayPos,f_RayDir,f_U,f_V,f_Dist
+						poly_no=poly_no_bak*3
+						hitrang=ftd(f_Dist)
+
+						if MoveVec(1)>=0.0 {
+							MoveVec(1)=(hitrang-tall)-Gap:hitrang=MoveVec(1)
+
+						}else{
+							MoveVec(1)+=(hitrang-tall)-Gap:
+							hitrang=MoveVec(1)
+						}
+
+					}else{
+						MoveVec(1)=0.0
+						hitrang=0.0
+						
+					}
+					
+
+
+				}else{
+					if MoveVec(1)>=0.0 {
+						MoveVec(1)=(hitrang-tall)-Gap:hitrang=MoveVec(1)
+					}else{
+						MoveVec(1)+=(hitrang-tall)-Gap:hitrang=MoveVec(1)
+					}
+				}	
+			}else{//空中
+				ud & 2
+				
+
+				if (ud & 2)>0  and (hitrang)>0.0  {///天井に衝突したのでXZ座標を移動前に戻す（移動後の天井から押し出すと落下が早すぎるため）
+					Side_f=1
+ 	 				if MoveVec(1)<0.0{
+						if hitrang2<absf(MoveVec(1)) {//下から天井に衝突の可能性
+							hitrang+MoveVec(1)-tall-Gap
+							MoveVec(1)+=hitrang2+Gap:Side_f=0
+						}
+					}
+					
+					if Side_f {
+
+	//壁までの距離は移動速度に影響されるので改善の余地あり
+						MoveVec=0.0
+						MoveVec(2)=0.0
+						if poly_no_bak>=0{	
+							pno=poly_no_bak*9
+										
+							_RayPosx=(Posfeetx-dup_tPosx)
+							if MoveVec(1)>=0.0 {_RayPosy=(Posfeety-dup_tPosy)-tall}else{_RayPosy=(Posfeety-dup_tPosy+MoveVec(1))-tall}
+							_RayPosz=(Posfeetz-dup_tPosz)
+							LocalRotXYZ _RayPosx, _RayPosy, _RayPosz,dup_RayAngx, dup_RayAngy, dup_RayAngz
+
+							_RayPosx/dup_oscx
+							_RayPosy/dup_oscy
+							_RayPosz/dup_oscz
+						 
+							modhg_setVec4 f_RayPos,_RayPosx,_RayPosy,_RayPosz,0.0
+
+							D3DXIntersectTri dup_Terraindata_Trivec_f(pno),dup_Terraindata_Trivec_f(pno+3),dup_Terraindata_Trivec_f(pno+6),f_RayPos,f_RayDir,f_U,f_V,f_Dist
+							poly_no=pno/3
+							hitrang=ftd(f_Dist)
+							if hitrang<((tall+_Sticky+Gap*2)){//接地
+								ud |= 9
+								if MoveVec(1)<0.0 {MoveVec(1)+=(hitrang-tall)-Gap:hitrang+MoveVec(1)-tall-Gap:}else{MoveVec(1)=(hitrang-tall)-Gap:hitrang-tall+Gap:}
+							}else{//天井があって接地はしてない
+								ud |= 8
+								if MoveVec(1)<0.0 {
+									hitrang+MoveVec(1)-tall-Gap
+									MoveVec(1)=0.0
+								}else{
+									hitrang-=tall+Gap
+								}
+							}
+						}else{
+							poly_no=-1
+							if hitrang2>0.0{
+								if MoveVec(1)<0.0 {
+									hitrang+MoveVec(1)-tall-Gap
+									MoveVec(1)=0.0
+								}else{
+									hitrang-=tall+Gap
+								}
+							}
+						}
+					}
+
+
+				
+					
+				}else{
+					if hitrang2!0.0{
+						if MoveVec(1)<0.0 {
+							hitrang+MoveVec(1)-tall-Gap
+							MoveVec(1)+=hitrang2+Gap
+						}else{
+							hitrang-=tall+Gap
+						}
+					}else{
+						if MoveVec(1)<0.0 {
+							hitrang+MoveVec(1)-tall-Gap
+						}else{
+							if hitrang<(tall+_Sticky+Gap){//接地
+								MoveVec(1)=(hitrang-tall)-Gap
+							}
+							hitrang-tall+Gap
+						}
+
+					}
+
+				}
+
+			}
+			if poly_no>=0 {
+
+
+				fvset Normal,dup_RayAngx, -dup_RayAngy, dup_RayAngz
+				fvdir Normal,dup_Terraindata_mn_vecxyz(poly_no)/dup_oscx,dup_Terraindata_mn_vecxyz(poly_no+1)/dup_oscy,dup_Terraindata_mn_vecxyz(poly_no+2)/dup_oscz
+				fvunit Normal
+				memcpy ArrGroundNormal,Normal,24
+				 
+				hitrang+Posfeety
+				poly_no/3
+
+			}else{
+				hitrang=999999.999
+
+			}
+		}else{//地面が無く天井に衝突した、上昇中なら天井から押し出し
+
+ 			fvset Normal,0.0,0.0,0.0
+			poly_no=-1
+			if hitrang2>0.0{
+				if MoveVec(1)<0.0 {
+					hitrang+MoveVec(1)-tall-Gap:MoveVec(1)+=hitrang2+Gap
+				}else{hitrang-tall+Gap}
+				ud =2
+			}
+		}
+	}else{		
+
+		if Buried {//地面が無い位置で地形に潜った可能性あり
+			if Ceiling {//天井があるので
+				if Buried_hitrang<Ceiling_hitrang {:Buried_hitrang=0.0}//裏面と比較して天井が下なら地形の外だった
+
+			} 
+			
+			if  Buried_hitrang!0.0 {//地形に潜った
+			//救済策として地面を横から判定して交点で停止		
+ 				getTerrainWallCol  tid, Posfeetx, Posfeety, Posfeetz, MoveVec, polyno,Gap, 2
+				if stat=1 {	
+					poly_no=polyno
+					hitrang=Posfeety+MoveVec(1)
+					memcpy ArrGroundNormal,Normal,24
+					ud =1
+				}else{
+					poly_no=-1
+					hitrang=999999.999
+				}
+			}else{
+				hitrang=999999.999
+				poly_no=-1
+			}
+		}else{							
+
+				hitrang=999999.999
+				poly_no=-1
+		}
+
+	}
+
+
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&1)=0
+
+	if tccnt<10 {
+		tidlist(tccnt)=tid
+		hit_cnt_total2(tccnt)=hit_cnt_total2@
+		if hit_cnt_total2@ {
+			memexpand debug_test_tnolist(tccnt),hit_cnt_total2@*4
+			memcpy debug_test_tnolist(tccnt),tnolist,hit_cnt_total2@*4
+		}else{
+			debug_test_tnolist(tccnt)=""
+		}
+		tccnt++
+	}else{
+		hit_mapcnt_total2@=hit_mapcnt_total2_last
+	}
+	#endif
+#endif
+gf=ud&1
+_stat=ud
+return hitrang
+ 
+
+//[---Terrainデータにレイを飛ばして壁を判定し衝突した壁の外に押し出す移動量にMoveVecを変更---]
+//getMovTerrainWallCol tid, Posfeetx, Posfeety, Posfeetz, MoveVec, poly_no, Step
+// tid = 地形ID「loadTerrainで使用したID」
+// Posfeetx = 足元の位置X座標(入力)「キャラの足元座標入力」
+// Posfeety = 足元の位置Y座標(入力)「キャラの足元座標入力」
+// Posfeetz = 足元の位置Z座標(入力)「キャラの足元座標入力」
+// MoveVec = 移動ベクトル(3要素配列入出力)「XYZの移動量」
+// poly_no = 衝突したポリゴンナンバー(出力)「最後に衝突したナンバーを返す、-1なら衝突なし」
+// Step = 壁と見なさない高さ(入力)
+//返り値1：statに判定結果が返る「-1=データ範囲外、0=衝突なし、1=衝突あり、2=二回壁に衝突（壁の外に押し出された場所が他の壁の後ろだった）、8=手前に傾いてる壁に衝突したのでXZ移動を停止」
+//返り値2：refdvalに交点までの距離が返る
+//※この命令はgetTerrainWallColを二回行うことで凹の壁にも対応させてますが
+//※一回目は壁の外に押し出して二回目は始点から押し出された地点までの衝突した交点で停止します
+//「法線はArrTerrainNormal()、内積はvarTerrainTriInner」
+#deffunc getMovTerrainWallCol int tid,double Posfeetx,double Posfeety,double Posfeetz,array MoveVec,var poly_no,double Step,local hithit
+	poly_no=-1
+	if MoveVec=0.0 and MoveVec(2)=0.0 {mref _stat,64:_stat=0:return 0.0}
+	gmtwc_MoveVec_y=MoveVec(1)
+	MoveVec(1)=0.0
+	getTerrainWallCol tid, Posfeetx, Posfeety, Posfeetz, MoveVec, w_polyno,Step,1
+	w_hithit=stat
+ 	if w_hithit>0 and (w_hithit&72)=0{
+
+		poly_no=w_polyno
+		if MoveVec! 0.0 or MoveVec(1)!0.0{
+			MoveVec(1)=0.0
+			getTerrainWallCol  tid, Posfeetx, Posfeety, Posfeetz, MoveVec, w_polyno,Step, 0
+			w_hithit+=stat>0
+
+			if w_polyno>=0{poly_no=w_polyno}
+		}
+	}
+	MoveVec(1)=gmtwc_MoveVec_y
+
+	mref _stat,64
+	_stat=w_hithit
+return refdval
+
+//[---Terrainデータにレイを飛ばして壁を判定(実際の移動はしない、MoveVecに取得のみ)---]
+//getTerrainWallCol  tid, Posfeetx, Posfeety, Posfeetz, RayDir, d_sz, poly_no, tcf
+// tid = 地形ID「loadTerrainで使用したID」
+// Posfeetx = 足元の位置X座標(入力)「キャラの足元座標入力」
+// Posfeety = 足元の位置Y座標(入力)「キャラの足元座標入力」
+// Posfeetz = 足元の位置Z座標(入力)「キャラの足元座標入力」
+// MoveVec = 移動ベクトル(3要素配列入出力)「衝突していたら壁の外側に押し出した位置までのXYZ移動量」
+// poly_no = 衝突したポリゴンナンバー(出力)「衝突したナンバーを返す、-1なら衝突なし」
+// Step = 壁と見なさない高さ(入力)
+// tcf = 衝突した時にMoveVecを外側に押し出た位置までか交点までの移動ベクトルにするか
+//			「0=交点、1=垂直面衝突は押し出し（斜面は交点）、2=通常急斜面と垂直面しか処理しないのを全ての面を処理（2=交点、3=押し出し）」
+//返り値1：statに判定結果が返る「-1=データ範囲外、0=衝突なし、1=衝突あり、8=手前に傾いてる壁に衝突したのでXZ移動を停止」
+//返り値2：refdvalに交点までの距離が返る
+//「法線はArrTerrainNormal()、内積はvarTerrainTriInner」
+ #deffunc getTerrainWallCol int tid,double Posfeetx,double Posfeety,double Posfeetz,array MoveVec,var poly_no,double Step,int tcf,local hithit
+	wt=0
+	poly_no=-1
+	inner=0.0
+	hithitovr=0
+	dis=sqrt(MoveVec*MoveVec+MoveVec(1)*MoveVec(1)*0+MoveVec(2)*MoveVec(2))+Gap
+	fvset c_Ray_Dir,MoveVec,MoveVec(1)*0,MoveVec(2)
+	mref _stat,64
+
+	if tid ! tid_bak {tid_bak=tid
+		dupptr dup_Terraindata_mapcnt,varptr(Terraindata_mapcnt(tid)),Terrain_gmax_x(tid)*Terrain_gmax_z(tid)*4,4
+
+		dupptr dup_Terraindata_Trilistptr,varptr(Terraindata_Trilistptr(tid)),Terrain_gmax_x(tid)*Terrain_gmax_z(tid)*4,4
+		dupptr dup_Terraindata_Trivec_f,varptr(Terraindata_Trivec_f(tid)),Terrain_Tricnt(tid)*4,4
+		dupptr dup_Terraindata_vecxyz,varptr(Terraindata_vecxyz(tid)),Terrain_vecmax(tid)*8*3,3
+		dupptr dup_Terraindata_Triindex,varptr(Terraindata_Triindex(tid)),Terrain_Trimax(tid)*4*3,4
+
+		dupptr dup_Terraindata_mn_vecxyz,varptr(Terraindata_mn_vecxyz(tid)),Terrain_Trimax(tid)*8*3,3
+		Terraindata_Trilist_varptr=varptr(Terraindata_Trilist(tid))
+		dupptr dup_Terraindata_MaterialList,varptr(Terraindata_MaterialList(tid)),Terrain_Trimax(tid)*4,4
+		dupptr dup_Terraindata_mapy,varptr(Terraindata_mapy(tid)),Terrain_gmax_x(tid)*Terrain_gmax_z(tid)*8,3
+		dupptr dup_Terraindata_hitf,varptr(Terraindata_hitf(tid)),Terrain_Tricnt(tid)/9,4
+
+		dup dup_tPosx,tposx(tid):dup dup_tPosy,tposy(tid):dup dup_tPosz,tposz(tid)
+		dup dup_RayAngx,tangx(tid):dup dup_RayAngy,tangy(tid):dup dup_RayAngz,tangz(tid)
+
+		dup dup_oscx,tsclx(tid):dup dup_oscy,tscly(tid):dup dup_oscz,tsclz(tid)
+
+	}
+
+
+
+	if tlo_w_list(tid)>=0 { 
+
+		dup dup_tid_oid,tlo_w_list(tid)
+		getpos dup_tid_oid,dup_tPosx,dup_tPosy,dup_tPosz
+		getang dup_tid_oid,dup_RayAngx,dup_RayAngy,dup_RayAngz
+
+		getscale dup_tid_oid,dup_oscx,dup_oscy,dup_oscz
+
+	}
+	_RayPosx=Posfeetx-dup_tPosx
+	_RayPosy=Posfeety-dup_tPosy-Step
+	_RayPosz=Posfeetz-dup_tPosz
+
+	fvunit c_Ray_Dir
+
+	LocalRotRay _RayPosx, _RayPosy, _RayPosz,dup_RayAngx, dup_RayAngy, dup_RayAngz,c_Ray_Dir
+
+	_RayPosx/dup_oscx
+	_RayPosy/dup_oscy
+	_RayPosz/dup_oscz
+
+	fvdiv  c_Ray_Dir,dup_oscx,dup_oscy,dup_oscz
+
+	modhg_setVec4 f_RayDir,c_Ray_Dir,c_Ray_Dir(1),c_Ray_Dir(2),0.0
+
+	modhg_setVec4 f_RayPos,_RayPosx,_RayPosy,_RayPosz,0.0
+
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&2)=0
+
+	hit_cnt_total2@=0
+	#endif
+
+#endif
+
+
+	
+	if tcf&2 {
+		WallSteepSlopes_bak=WallSteepSlopes:WallSteepSlopes=-1.0
+		memset dup_Terraindata_hitf,2,(Terrain_Tricnt(tid)/9),0
+	}else{
+		memcpy dup_Terraindata_hitf,Terraindata_wall_f_list(tid),Terrain_Tricnt(tid)/9,0,0
+	}
+
+	cpxx=Terrain_polyscale(tid)*(_RayPosx-Terrain_minx(tid))
+	cpxz=Terrain_polyscale(tid)*(_RayPosz-Terrain_minz(tid))
+
+	sx1=0+cpxx
+	sy1=0+cpxz
+
+	fvset zeroxyz,c_Ray_Dir,c_Ray_Dir(1),c_Ray_Dir(2)
+	hitrang=dis
+	fvunit c_Ray_Dir
+
+	fvmul zeroxyz,hitrang,hitrang,hitrang
+	fvadd zeroxyz,_RayPosx,_RayPosy,_RayPosz
+
+	sx2=0+((zeroxyz-Terrain_minx(tid))*Terrain_polyscale(tid))
+	sy2=0+((zeroxyz(2)-Terrain_minz(tid))*Terrain_polyscale(tid))
+	skyp=0
+
+	ClipLine sx1,sy1, sx2, sy2, Terrain_gmax_x(tid)*Terrain_polysize(tid)-1,Terrain_gmax_z(tid)*Terrain_polysize(tid)-1
+	if stat {_stat=-1:return 0.0}
+
+	sqr=sqrt(c_Ray_Dir*c_Ray_Dir+c_Ray_Dir(2)*c_Ray_Dir(2))*Terrain_polyscale(tid)
+	if sqr=0.0 {
+		sqr=1.0
+		ppy=sqrt(Terrain_polysize(tid)*Terrain_polysize(tid)+Terrain_polysize(tid)*Terrain_polysize(tid))
+	}else{
+		ppy=sqrt(Terrain_polysize(tid)*Terrain_polysize(tid)+Terrain_polysize(tid)*Terrain_polysize(tid))/sqr
+	}
+
+
+	if c_Ray_Dir(1)<=0.0 {
+ 		hity=(-ppy*c_Ray_Dir(1)*1.0+_RayPosy)
+		reay=c_Ray_Dir(1)*(1.0/sqr) 
+	}else{
+		hity=ppy*c_Ray_Dir(1)+_RayPosy
+		reay=c_Ray_Dir(1)*(1.0/sqr)
+	}
+
+	FindGridLine mapno,dup_Terraindata_mapcnt,  sx1,  sy1,  sx2, sy2, Terrain_polysize(tid),0,Terrain_gmax_x(tid),Terrain_gmax_z(tid)
+	if stat > 0 {
+
+		repeat
+			if (sqrt((GridCrossPosx-cpxx)*(GridCrossPosx-cpxx)+(GridCrossPosy-cpxz)*(GridCrossPosy-cpxz))*reay+hity)>=dup_Terraindata_mapy(mapno) {
+				dupptr dup_mapTrilist,Terraindata_Trilist_varptr+dup_Terraindata_Trilistptr(mapno),dup_Terraindata_mapcnt(mapno)*4,4
+				repeat dup_Terraindata_mapcnt(mapno)
+					pno=dup_mapTrilist(cnt)
+					if peek(dup_Terraindata_hitf,pno)>0 {
+						poke dup_Terraindata_hitf,pno,0
+						pno*9
+						D3DXIntersectTri dup_Terraindata_Trivec_f(pno),dup_Terraindata_Trivec_f(pno+3),dup_Terraindata_Trivec_f(pno+6),f_RayPos,f_RayDir,f_U,f_V,f_Dist
+						if stat {
+							FloatToDouble f_Dist
+
+							if getDouble<=hitrang {
+								polyno=pno/3
+								fvset Normal_,dup_RayAngx, -dup_RayAngy, dup_RayAngz
+								fvdir Normal_,dup_Terraindata_mn_vecxyz(polyno)/dup_oscx,dup_Terraindata_mn_vecxyz(polyno+1)/dup_oscy,dup_Terraindata_mn_vecxyz(polyno+2)/dup_oscz
+								fvunit Normal_
+							
+								if Normal_(1)>=WallSteepSlopes {
+									inner=c_Ray_Dir*dup_Terraindata_mn_vecxyz(polyno)+c_Ray_Dir(1)*dup_Terraindata_mn_vecxyz(polyno+1)+c_Ray_Dir(2)*dup_Terraindata_mn_vecxyz(polyno+2)
+									if inner<0.0 {//表
+										fvset Normal,Normal_,Normal_(1),Normal_(2)
+										inner_Confirm=inner
+										hithit=1
+										f_UV=f_U,f_V
+										poly_no=polyno
+										hitrang=getDouble
+									}
+									
+								}
+							}
+						}
+
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&2)=0
+
+if poly_no=pno/3 {
+	tnolist(hit_cnt_total2@)=poly_no | $80000000
+			tmapnolist(hit_mapcnt_total2@)=mapno
+
+		hit_mapcnt_total2@++
+}else{
+	tnolist(hit_cnt_total2@)=pno/3
+}
+hit_cnt_total2@++
+	#endif
+#endif
+
+					}
+				loop
+			}
+			if hithit {break}
+			NextGridLine mapno
+			if stat <=0 {break}
+		loop
+
+	}	
+
+	if hithit{
+		//hitrang-=Gap
+		if Normal(1)>WallVerticalRange {
+			wt=8
+			hitrang-=Gap
+			if hitrang<=Gap {hitrang=0.0}
+
+			fvset MoveVec,0.0,MoveVec(1), 0.0
+		}else{
+			if (tcf&1)=0 {
+				fvset c_Ray_Dir,MoveVec, MoveVec(1), MoveVec(2)
+				fvunit c_Ray_Dir
+				hitrang-=Gap*2
+				if hitrang<=Gap {hitrang=0.0}
+
+				fvmul c_Ray_Dir,hitrang,hitrang,hitrang
+				fvset MoveVec,c_Ray_Dir, c_Ray_Dir(1), c_Ray_Dir(2)
+			}else{
+
+				if absf(Normal(1)) < WallVerticalRange{
+					fvset _fvang_,MoveVec,MoveVec(1),MoveVec(2)
+					fvunit _fvang_
+					dis-=hitrang+Gap
+					fvmul _fvang_,dis,dis,dis
+					fvinner _fvang_,Normal,Normal(1),Normal(2)
+					_fvang_=absf(_fvang_)
+					fvadd MoveVec,_fvang_*Normal+Normal*Gap,_fvang_*Normal(1),_fvang_*Normal(2)+Normal(2)*Gap
+
+				}else{
+				hitrang-=Gap
+				if hitrang<=Gap {hitrang=0.0}
+
+					wt=64
+					fvset c_Ray_Dir,MoveVec,MoveVec(1), MoveVec(2)
+					fvunit c_Ray_Dir
+					
+					fvmul c_Ray_Dir,hitrang,hitrang,hitrang
+					fvset MoveVec,c_Ray_Dir,c_Ray_Dir(1), c_Ray_Dir(2)
+				}
+			}
+		}
+	}else{hitrang-Gap}
+
+	if hithit{poly_no/3	}
+
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&2)=0
+	if tccnt<10 {
+		tidlist(tccnt)=tid
+		hit_cnt_total2(tccnt)=hit_cnt_total2@
+		if hit_cnt_total2@ {
+			memexpand debug_test_tnolist(tccnt),hit_cnt_total2@*4
+			memcpy debug_test_tnolist(tccnt),tnolist,hit_cnt_total2@*4
+		}else{
+			debug_test_tnolist(tccnt)=""
+		}
+		tccnt++
+	}else{
+		hit_mapcnt_total2@=hit_mapcnt_total2_last
+	}
+	#endif
+#endif
+
+	if tcf&2 {WallSteepSlopes=WallSteepSlopes_bak	}
+	_stat=hithit | wt
+return hitrang
+
+
+
+//[---Terrainデータにレイを飛ばして一番近い面を判定---]
+//getTerrainCol tid, RayPosx, RayPosy, RayPosz, RayDir, d_sz, poly_no, tcf, hcnt
+// tid = 地形ID「loadTerrainで使用したID」
+// RayPosx = レイの始点座標(入出力)「レイと衝突した交点Xが返る」
+// RayPosy = レイの始点座標(入出力)「レイと衝突した交点Yが返る」
+// RayPosz = レイの始点座標(入出力)「レイと衝突した交点Zが返る」
+// RayDir = 方向ベクトル(入出力)「衝突した一番近い面の法線が返る」
+// d_sz = 判定距離(入力)「始点からのZ距離」
+// poly_no = 衝突した一番近い面のポリゴンナンバー(出力)「当たってなければ-1、0以上で衝突したポリゴンナンバー」
+// tcf = 判定の種類(入力)「0=表面のみ(statに1)、1=表裏面(statに1か2)、2=裏面のみ(statに2)、3=表裏面(statに3)」()内は衝突した時の返り値
+// hcnt = 衝突した区域含めて何区域検索を続けるか（省略時3）「3で衝突した後に2区域続けて検索する」
+//返り値1：statに判定結果が返る「-1=範囲外、0=衝突なし、1=表面、2=裏面、3=表裏面(どっちかは不明)」
+//返り値2：refdvalに交点までの距離が返る
+//「内積はvarTerrainTriInnerで取得できる」
+#deffunc getTerrainCol int tid,var RayPosx,var RayPosy,var RayPosz,array RayDir,double d_sz,var poly_no,int tcf,int hcnt,local hithit
+	poly_no=-1
+	inner=0.0
+	hithitovr=0
+	if hcnt=0 {_hcnt=3}else{_hcnt=hcnt}
+
+	mref _stat,64
+
+	if tid ! tid_bak {tid_bak=tid
+
+		dupptr dup_Terraindata_mapcnt,varptr(Terraindata_mapcnt(tid)),Terrain_gmax_x(tid)*Terrain_gmax_z(tid)*4,4
+
+		dupptr dup_Terraindata_Trilistptr,varptr(Terraindata_Trilistptr(tid)),Terrain_gmax_x(tid)*Terrain_gmax_z(tid)*4,4
+		dupptr dup_Terraindata_Trivec_f,varptr(Terraindata_Trivec_f(tid)),Terrain_Tricnt(tid)*4,4
+		dupptr dup_Terraindata_vecxyz,varptr(Terraindata_vecxyz(tid)),Terrain_vecmax(tid)*8*3,3
+		dupptr dup_Terraindata_Triindex,varptr(Terraindata_Triindex(tid)),Terrain_Trimax(tid)*4*3,4
+
+		dupptr dup_Terraindata_mn_vecxyz,varptr(Terraindata_mn_vecxyz(tid)),Terrain_Trimax(tid)*8*3,3
+		Terraindata_Trilist_varptr=varptr(Terraindata_Trilist(tid))
+
+		dupptr dup_Terraindata_MaterialList,varptr(Terraindata_MaterialList(tid)),Terrain_Trimax(tid)*4,4
+
+
+		dupptr dup_Terraindata_mapy,varptr(Terraindata_mapy(tid)),Terrain_gmax_x(tid)*Terrain_gmax_z(tid)*8,3
+		dupptr dup_Terraindata_hitf,varptr(Terraindata_hitf(tid)),Terrain_Tricnt(tid)/9,4
+
+
+		dup dup_tPosx,tposx(tid):dup dup_tPosy,tposy(tid):dup dup_tPosz,tposz(tid)
+		dup dup_RayAngx,tangx(tid):dup dup_RayAngy,tangy(tid):dup dup_RayAngz,tangz(tid)
+
+		dup dup_oscx,tsclx(tid):dup dup_oscy,tscly(tid):dup dup_oscz,tsclz(tid)
+
+
+	}
+
+
+	if tlo_t_list(tid)>=0 { 
+
+		dup dup_tid_oid,tlo_t_list(tid)
+		getpos dup_tid_oid,dup_tPosx,dup_tPosy,dup_tPosz
+		getang dup_tid_oid,dup_RayAngx,dup_RayAngy,dup_RayAngz
+
+		getscale dup_tid_oid,dup_oscx,dup_oscy,dup_oscz
+
+	}
+
+	_RayPosx=RayPosx-dup_tPosx
+	_RayPosy=RayPosy-dup_tPosy
+	_RayPosz=RayPosz-dup_tPosz
+	LocalRotRay _RayPosx, _RayPosy, _RayPosz,dup_RayAngx, dup_RayAngy, dup_RayAngz,RayDir
+
+	_RayPosx/dup_oscx
+	_RayPosy/dup_oscy
+	_RayPosz/dup_oscz
+	fvdiv  RayDir,dup_oscx,dup_oscy,dup_oscz
+
+
+	modhg_setVec4 f_RayDir,RayDir,RayDir(1),RayDir(2),0.0
+
+	modhg_setVec4 f_RayPos,_RayPosx,_RayPosy,_RayPosz,0.0
+
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&4)=0
+
+	hit_cnt_total2@=0
+	#endif
+#endif
+
+	memset dup_Terraindata_hitf,0,(Terrain_Tricnt(tid)/9),0
+
+	cpxx=Terrain_polyscale(tid)*(_RayPosx-Terrain_minx(tid))
+	cpxz=Terrain_polyscale(tid)*(_RayPosz-Terrain_minz(tid))
+
+	sx1=0+cpxx
+	sy1=0+cpxz
+
+	fvset zeroxyz,RayDir,RayDir(1),RayDir(2)
+	if d_sz<=0.0 {
+		if RayDir(1)<=0.0 {
+			if RayDir(1)=0.0 {
+				hitrang=FarZ
+
+			}else{
+
+				hitrang=-((_RayPosy-Terrain_miny(tid))/RayDir(1))
+			}
+		}else{
+			hitrang=-((_RayPosy-Terrain_maxy(tid))/RayDir(1));FarZ
+
+		}
+	}else{
+		hitrang=d_sz
+	}
+
+	if hitrang<=0.0 {_stat=-1:return 0.0}
+	fvmul zeroxyz,hitrang,hitrang,hitrang
+	fvadd zeroxyz,_RayPosx,_RayPosy,_RayPosz
+
+	sx2=0+((zeroxyz-Terrain_minx(tid))*Terrain_polyscale(tid))
+	sy2=0+((zeroxyz(2)-Terrain_minz(tid))*Terrain_polyscale(tid))
+	skyp=0
+
+
+
+	ClipLine sx1,sy1, sx2, sy2, Terrain_gmax_x(tid)*Terrain_polysize(tid)-1,Terrain_gmax_z(tid)*Terrain_polysize(tid)-1
+	if stat {_stat=-1:return 0.0}
+
+	sqr=sqrt(RayDir*RayDir+RayDir(2)*RayDir(2))*Terrain_polyscale(tid)
+	if sqr=0.0 {sqr=1.0;}
+		
+		ppy=sqrt(Terrain_polysize(tid)*Terrain_polysize(tid)+Terrain_polysize(tid)*Terrain_polysize(tid))/sqr
+	}else{
+		ppy=sqrt(Terrain_polysize(tid)*Terrain_polysize(tid)+Terrain_polysize(tid)*Terrain_polysize(tid))/sqr
+	}
+
+
+	if RayDir(1)<=0.0 {
+ 		hity=(-ppy*RayDir(1)*1.0+_RayPosy)
+		reay=RayDir(1)*(1.0/sqr) 
+	}else{
+		hity=ppy*RayDir(1)+_RayPosy
+		reay=RayDir(1)*(1.0/sqr)
+	}
+
+	FindGridLine mapno,dup_Terraindata_mapcnt,  sx1,  sy1,  sx2, sy2, Terrain_polysize(tid),0,Terrain_gmax_x(tid),Terrain_gmax_z(tid)
+	if stat > 0 {
+
+		repeat
+//GridCrossPosx,GridCrossPosyはモジュールmod_FindGridLineのグローバル変数名（FindGridLine、NextGridLine使用後に利用できる）
+			if (sqrt((GridCrossPosx-cpxx)*(GridCrossPosx-cpxx)+(GridCrossPosy-cpxz)*(GridCrossPosy-cpxz))*reay+hity)>=dup_Terraindata_mapy(mapno) {
+
+				dupptr dup_mapTrilist,Terraindata_Trilist_varptr+dup_Terraindata_Trilistptr(mapno),dup_Terraindata_mapcnt(mapno)*4,4
+
+				repeat dup_Terraindata_mapcnt(mapno)
+					pno=dup_mapTrilist(cnt)
+					if peek(dup_Terraindata_hitf,pno)=0 {
+						poke dup_Terraindata_hitf,pno,1
+
+						pno*9
+						D3DXIntersectTri dup_Terraindata_Trivec_f(pno),dup_Terraindata_Trivec_f(pno+3),dup_Terraindata_Trivec_f(pno+6),f_RayPos,f_RayDir,f_U,f_V,f_Dist
+						if stat {
+							polyno=pno/3
+					FloatToDouble f_Dist
+
+							if getDouble<hitrang {
+									
+								if tcf>1 {//表裏
+									if tcf=2 {//裏
+									inner=RayDir*dup_Terraindata_mn_vecxyz(polyno)+RayDir(1)*dup_Terraindata_mn_vecxyz(polyno+1)+RayDir(2)*dup_Terraindata_mn_vecxyz(polyno+2)
+
+										if inner>=0.0 {//裏
+											hithit=2
+											f_UV=f_U,f_V
+										inner_Confirm=inner
+											poly_no=polyno
+											hitrang=getDouble
+
+										}
+									}else{//表裏
+										hithit=3
+										f_UV=f_U,f_V
+										inner_Confirm=0.0
+										poly_no=polyno
+										hitrang=getDouble
+									}
+
+								}else{//表裏
+									inner=RayDir*dup_Terraindata_mn_vecxyz(polyno)+RayDir(1)*dup_Terraindata_mn_vecxyz(polyno+1)+RayDir(2)*dup_Terraindata_mn_vecxyz(polyno+2)
+									if inner<0.0 {//表
+										hithit=1
+										f_UV=f_U,f_V
+										inner_Confirm=inner
+
+										poly_no=polyno
+										hitrang=getDouble
+									}else{
+
+										if tcf=1 {//裏
+											hithit=2
+											f_UV=f_U,f_V
+										inner_Confirm=inner
+
+											poly_no=polyno
+											hitrang=getDouble
+										}
+									}
+									
+								}
+							}
+						}
+
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&4)=0
+
+	if poly_no=pno/3 {
+		tnolist(hit_cnt_total2@)=poly_no | $80000000
+			tmapnolist(hit_mapcnt_total2@)=mapno
+
+			hit_mapcnt_total2@++
+
+	}else{
+		tnolist(hit_cnt_total2@)=pno/3
+	}
+	hit_cnt_total2@++
+	#endif
+#endif
+
+						
+					}
+				loop
+			}
+			
+			hithitovr+=hithit>0
+			if hithitovr>=_hcnt {break}
+			NextGridLine mapno
+			if stat <=0 {break}
+
+		loop
+	}	
+
+
+	fvmul RayDir,hitrang,hitrang,hitrang
+
+	fvset _fvang,dup_RayAngx, -dup_RayAngy, dup_RayAngz
+	fvdir _fvang,(_RayPosx+RayDir)*dup_oscx,(_RayPosy+RayDir(1))*dup_oscy,(_RayPosz+RayDir(2))*dup_oscz
+ 
+
+	RayPosx=_fvang+dup_tPosx
+	RayPosy=_fvang(1)+dup_tPosy
+	RayPosz=_fvang(2)+dup_tPosz
+ 
+
+	if hithit{
+		fvset RayDir,dup_RayAngx, -dup_RayAngy, dup_RayAngz
+		fvdir RayDir,dup_Terraindata_mn_vecxyz(poly_no)/dup_oscx,dup_Terraindata_mn_vecxyz(poly_no+1)/dup_oscy,dup_Terraindata_mn_vecxyz(poly_no+2)/dup_oscz
+		fvunit RayDir
+		poly_no/3
+
+		RayPosx+=RayDir*Gap
+		RayPosy+=RayDir(1)*Gap
+		RayPosz+=RayDir(2)*Gap
+ 	}
+
+
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&4)=0
+
+	if tccnt<10 {
+		tidlist(tccnt)=tid
+		hit_cnt_total2(tccnt)=hit_cnt_total2@
+		if hit_cnt_total2@ {
+			memexpand debug_test_tnolist(tccnt),hit_cnt_total2@*4
+			memcpy debug_test_tnolist(tccnt),tnolist,hit_cnt_total2@*4
+		}else{
+			debug_test_tnolist(tccnt)=""
+		}
+		tccnt++
+	}else{
+		hit_mapcnt_total2@=hit_mapcnt_total2_last
+	}
+	#endif
+#endif
+
+_stat=hithit
+return hitrang
+
+
+
+
+//[---Terrainデータ内の1枚の三角形をレイを飛ばして判定---]
+//getTerrainTriCol  tid, RayPosx, RayPosy, RayPosz, RayDir, d_sz, poly_no, tcf
+// tid = TerrainID「loadTerrainで使用したID」
+// poly_no = ポリゴンナンバー(入力)
+// RayPosx = レイの始点X座標(入力)
+// RayPosy = レイの始点Y座標(入力)
+// RayPosz = レイの始点Z座標(入力)
+// MoveVec = 移動ベクトル(3要素配列入出力)「出力：交点までの移動量」
+//返り値1：statに判定結果が返る「0=衝突なし、1=衝突あり」
+//返り値2：refdvalに交点までの距離が返る
+//「法線はArrTerrainNormal()、内積はvarTerrainTriInner」
+#deffunc getTerrainTriCol int tid,int poly_no,var RayPosx,var RayPosy,var RayPosz,array MoveVec,local hithit
+
+	pno=poly_no*9
+	dis=sqrt(MoveVec*MoveVec+MoveVec(1)*MoveVec(1)+MoveVec(2)*MoveVec(2))
+	fvset c_Ray_Dir,MoveVec,MoveVec(1),MoveVec(2)
+
+	dup dup_tPosx,tposx(tid):dup dup_tPosy,tposy(tid):dup dup_tPosz,tposz(tid)
+	dup dup_RayAngx,tangx(tid):dup dup_RayAngy,tangy(tid):dup dup_RayAngz,tangz(tid)
+	dup dup_oscx,tsclx(tid):dup dup_oscy,tscly(tid):dup dup_oscz,tsclz(tid)
+
+	_RayPosx=RayPosx-dup_tPosx
+	_RayPosy=RayPosy-dup_tPosy
+	_RayPosz=RayPosz-dup_tPosz
+
+	fvunit c_Ray_Dir
+
+	LocalRotRay _RayPosx, _RayPosy, _RayPosz,dup_RayAngx, dup_RayAngy, dup_RayAngz,c_Ray_Dir
+
+	_RayPosx/dup_oscx
+	_RayPosy/dup_oscy
+	_RayPosz/dup_oscz
+
+	fvdiv  c_Ray_Dir,dup_oscx,dup_oscy,dup_oscz
+	fvunit c_Ray_Dir
+
+
+	modhg_setVec4 f_RayDir,c_Ray_Dir,c_Ray_Dir(1),c_Ray_Dir(2),0.0
+
+	modhg_setVec4 f_RayPos,_RayPosx,_RayPosy,_RayPosz,0.0
+
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&8)=0
+
+	hit_cnt_total2@=0
+	#endif
+#endif
+
+		dupptr dup_Terraindata_Trivec_fs,varptr(Terraindata_Trivec_f(tid)),Terrain_Tricnt(tid)*4,4
+		dupptr dup_Terraindata_mn_vecxyzs,varptr(Terraindata_mn_vecxyz(tid)),Terrain_Trimax(tid)*24,3
+
+		D3DXIntersectTri dup_Terraindata_Trivec_fs(pno),dup_Terraindata_Trivec_fs(pno+3),dup_Terraindata_Trivec_fs(pno+6),f_RayPos,f_RayDir,f_U,f_V,f_Dist
+		if stat {
+			FloatToDouble f_Dist
+			if getDouble<dis {
+				polyno=pno/3
+				fvset Normal,dup_RayAngx, -dup_RayAngy, dup_RayAngz
+				fvdir Normal,dup_Terraindata_mn_vecxyzs(polyno)/dup_oscx,dup_Terraindata_mn_vecxyzs(polyno+1)/dup_oscy,dup_Terraindata_mn_vecxyzs(polyno+2)/dup_oscz
+				fvunit Normal
+				inner_Confirm=c_Ray_Dir*dup_Terraindata_mn_vecxyzs(polyno)+c_Ray_Dir(1)*dup_Terraindata_mn_vecxyzs(polyno+1)+c_Ray_Dir(2)*dup_Terraindata_mn_vecxyzs(polyno+2)
+				hithit=1
+
+				f_UV=f_U,f_V
+				hitrang=getDouble
+				fvset c_Ray_Dir,MoveVec, MoveVec(1), MoveVec(2)
+				fvunit c_Ray_Dir
+				fvmul c_Ray_Dir,hitrang,hitrang,hitrang
+			}
+		}
+	
+
+#ifdef  mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&8)=0
+
+	if hithit {
+		tnolist(hit_cnt_total2@)=(poly_no*3) | $80000000
+		tmapnolist(hit_mapcnt_total2@)=mapno
+		hit_mapcnt_total2@++
+	}else{
+		tnolist(hit_cnt_total2@)=poly_no*3
+	}
+	hit_cnt_total2@++
+
+	if tccnt<10 {
+		tidlist(tccnt)=tid
+		hit_cnt_total2(tccnt)=hit_cnt_total2@
+		if hit_cnt_total2@ {
+			memexpand debug_test_tnolist(tccnt),hit_cnt_total2@*4
+			memcpy debug_test_tnolist(tccnt),tnolist,hit_cnt_total2@*4
+		}else{
+			debug_test_tnolist(tccnt)=""
+		}
+		hit_mapcnt_total2_last=hit_mapcnt_total2@
+		tccnt++
+	}else{
+		hit_mapcnt_total2@=hit_mapcnt_total2_last
+	}
+	#endif
+#endif
+
+		mref _stat,64
+
+_stat=hithit
+	
+return hitrang
+
+
+//「-------------軸を指定してオブジェクトを回転-------------」
+//ObjAxisAng  oid, aax, aay, aaz, Axis, ang, lw
+// oid = オブジェクトID(入力)
+// aax = 基準角度X(入力)「この角度に回転してから軸回転します」
+// aay = 基準角度Y(入力)
+// aaz = 基準角度Z(入力)
+// Axis = 回転軸ベクトル(3要素配列入力)
+// ang = 回転角度(入力）
+// lw = ローカル軸かワールド軸(入力）「0=ローカル座標軸として回転、1=ワールド座標軸として回転」
+#deffunc ObjAxisAng int oid,double aax,double aay,double aaz,array Axis,double ang,int lw//int oid,double _t_px,double _t_py,double _t_pz,double _t_Angx,double _t_Angy,double _t_Angz
+	setfloat4 Axis_f,Axis,Axis(1),Axis(2)
+ 	D3DXMatrixRotationYawPitchRoll TurnMat, -aay,aax, aaz
+	D3DXMatrixRotationAxis temp_Mat,Axis_f,ang
+	if lw {
+		D3DXMatrixMultiply TurnMat,TurnMat,temp_Mat
+	}else{
+		D3DXMatrixMultiply TurnMat,temp_Mat,TurnMat
+	}
+	mod_MatToEul TurnMat,cax,cay,caz
+	setang oid,cax,cay,caz
+return
+
+//[---座標とレイベクトルを回転させる---]Col命令内で使用
+//通常のfvdirとは回転順序が違う
+#deffunc LocalRotRay var dx,var dy,var dz,double ax,double ay,double az,array RayDir
+	fvset fvz,0.0,0.0,az
+	fvdir fvz,dy,dx,dz
+	fvset fv,-ay,ax,0.0
+	fvdir fv,fvz,fvz(1),fvz(2)
+ 	dy=fv
+	dx=fv(1)
+	dz=fv(2)
+
+	fvset fvz,0.0,0.0,az
+	fvdir fvz,RayDir(1),RayDir,RayDir(2)
+	fvset fv,-ay,ax,0.0
+	fvdir fv,fvz,fvz(1),fvz(2)
+	fvset RayDir,fv(1),fv,fv(2)
+return
+
+//[---座標を回転させる---]Col命令内で使用
+#deffunc LocalRotXYZ var dx,var dy,var dz,double ax,double ay,double az
+	fvset fvz,0.0,0.0,az
+	fvdir fvz,dy,dx,dz
+	fvset fv,-ay,ax,0.0
+	fvdir fv,fvz,fvz(1),fvz(2)
+ 	dy=fv
+	dx=fv(1)
+	dz=fv(2)
+
+return
+
+
+//「-------------オブジェクトの位置や回転を全て0に戻した時に指定オブジェクトの相対位置や角度を維持して配置----」
+//ObjZeroCam oid , cPos, cAng, _t_px, _t_py, _t_pz, _t_Angx, _t_Angy, _t_Angz
+// oid = オブジェクトID(入力)
+// _t_px = 移動量X(入力)「実際には逆方向に移動」
+// _t_py = 移動量Y(入力)
+// _t_pz = 移動量Z(入力)
+// _t_Angx = 回転X(入力)「実際には逆方向に回転」
+// _t_Angy = 回転Y(入力）
+// _t_Angz = 回転Z(入力）
+//※この命令はモデルの頂点は動かさずにカメラを動かして3D座標をhgcnvaxisで2D座標にしてhglineでワイヤフレーム表示するために使用
+#deffunc ObjZeroPosAng int oid,double _t_px,double _t_py,double _t_pz,double _t_Angx,double _t_Angy,double _t_Angz
+	selpos oid
+	objgetfv cPos
+	selang oid
+	objgetfv cAng
+ 
+ 	fvset fv_z,0.0,0.0,_t_Angz
+	fvdir fv_z,cPos(1)-_t_py,cPos-_t_px,cPos(2)-_t_pz
+	fvset fv_yx,-_t_Angy,_t_Angx,0.0
+	fvdir fv_yx,fv_z,fv_z(1),fv_z(2)
+
+	setpos oid,fv_yx(1),fv_yx,fv_yx(2)
+	D3DXMatrixRotationYawPitchRoll temp_Mat,-cAng(1), 0.0, cAng(2)
+	D3DXMatrixRotationX TurnMat,cAng
+	D3DXMatrixMultiply temp_Mat,temp_Mat,TurnMat
+
+	D3DXMatrixRotationYawPitchRoll TurnMat,0.0, 0.0, -_t_Angz 
+	D3DXMatrixMultiply temp_Mat,TurnMat,temp_Mat
+	D3DXMatrixRotationYawPitchRoll TurnMat,_t_Angy,-_t_Angx,0.0 
+	D3DXMatrixMultiply TurnMat,TurnMat,temp_Mat
+
+	mod_MatToEul TurnMat,cax,cay,caz
+	setang oid,cax,cay,caz
+return
+
+
+
+
+
+//「-------------回転行列から各オイラー角取得----(ObjZeroPosAngから使われる事が前提で単体では使用しない)」
+//MatToEul Mat, ex, ey, ez
+// Mat			[回転行列4*4(入力)]float
+// ex ,ey ,ez	[各オイラー角（出力）]double
+#deffunc  mod_MatToEul array  Mat ,var ex,var ey,var ez
+#const H_PI M_PI/2.0
+	Mat8=limitf(ftd(Mat(8)),-1.0,1.0)
+	ey=-atan(Mat8,sqrt(1.0-Mat8*Mat8))
+	if  absf(cos(ey))<0.001{
+		ex=atan(ftd(Mat(6)),ftd(Mat(5)))
+		if Mat8>0.0 {ey=-H_PI}else{ey=H_PI}
+		ez=0.0 
+    }else{
+		ex=atan(-ftd(Mat(9)),ftd(Mat(10)))
+		ez=atan(-ftd(Mat(4)),ftd(Mat(0)))
+	}
+return  
+
+
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&16)=0
+
+//-------------------　Boundingbox_debug　-----------------------------
+//mod_hgCnvRayCol_debugが設定されてる時にhgdrawの
+//前に置くことでsetBoundingBoxで登録したオブジェクトが移動回転しても
+//デバッグ用表示ボックスが追随します。
+//色の意味：
+// 青が通常
+// 緑が境界球判定で衝突した（このボックスのみ詳しく判定処理をする）
+// 黄が壁として衝突
+// 赤が地面（衝突して無くても）
+// 紫が天井（衝突して無くても）
+#deffunc Boundingbox_debug
+
+ 	repeat limit(length(boid_debug)-2,0,length(boid_debug)),2
+	if boid_debug(cnt)>0 { 
+		dup dup_boid_debug,boid_debug(cnt)
+		dup dup_getBBSize,getBBSize(cnt,0)
+		dup dup_getBBCenter,getBBCenter(cnt,0)
+		getwork dup_boid_debug,bbwx,bbwy,bbwz
+		if bbwx {
+			bbwx--
+			if bbwx=0.0 {
+				objlight dup_boid_debug, exlight
+			}
+			setwork dup_boid_debug,bbwx,0.0,0.0
+		}
+		getpos cnt,bbpx,bbpy,bbpz
+
+		selang cnt
+		objgetfv fv_debug
+
+		selang dup_boid_debug
+		objsetfv fv_debug
+		fv_debug(1)*-1.0
+		fvdir fv_debug,-dup_getBBCenter,-dup_getBBCenter(1),-dup_getBBCenter(2)
+		selpos dup_boid_debug
+
+		objsetf3 bbpx,bbpy,bbpz
+		objaddfv fv_debug
+
+	}
+	loop 
+return
+
+	#endif
+#endif
+
+#ifndef Boundingbox_debug
+#define global Boundingbox_debug  /**/
+#endif
+
+#ifdef mod_hgCnvRayCol_debug@
+	#if (mod_hgCnvRayCol_debug@&15)!15
+
+//-------------------　TerrainLine_debug　-----------------------------
+//mod_hgCnvRayCol_debugが設定されてる時にhgdrawとhgsyncの
+//間に置くことで判定処理されたポリゴンをライン表示する
+//レイが交差した物は赤で表示（一回の判定で複数交差も有る） 
+//赤で表示した物はポリゴンナンバーとマップナンバー(カッコ内)を表示
+//処理数が多い場合何個か置きに表示したり
+//三角形の辺を減らして表示します。
+//最大で命令10回までTerrain系の判定命令でポリゴンナンバーを蓄積します。
+#deffunc TerrainLine_debug
+
+	selcpos
+	objgetfv cam_pos
+	selcang
+	objgetfv cam_ang
+	if CAM_MODE_bak=CAM_MODE_LOOKAT {cammode@hsp CAM_MODE_NORMAL}
+	
+	_winx=ginfo_winx
+	_winy=ginfo_winy
+	color 0,255,0
+	cont=0
+	line_cntloop=1
+	line_cnt=0
+	line_cnt_total=0
+	line_triangle=3
+	gmode 3,,,80
+	repeat tccnt
+		memset Terraindata_hitf(tidlist(cnt)),1,(Terrain_Tricnt(tidlist(cnt))/9),0
+	loop
+	falpha 128
+
+
+	hit_mapcnt_total2=0
+	hit_mapcnt_total2@=0
+	repeat tccnt
+		_tid=tidlist(cnt)
+		_cnt=cnt
+		dupptr dup_vecxyz_debug,varptr(Terraindata_vecxyz(_tid)),Terrain_vecmax(_tid)*8*3,3
+		dupptr dup_Triindex_debug,varptr(Terraindata_Triindex(_tid)),Terrain_Trimax(_tid)*4*3,4
+		ObjZeroPosAng HGOBJ_CAMERA , tposx(_tid), tposy(_tid), tposz(_tid), tangx(_tid), tangy(_tid), tangz(_tid)
+
+		dup dup_oscx,tsclx(_tid):dup dup_oscy,tscly(_tid):dup dup_oscz,tsclz(_tid)
+		hgdraw 6
+		line_cnt_total+=hit_cnt_total2(cnt)
+		line_cntloop=line_cnt_total/200+1
+		line_triangle=limit((1000-line_cntloop)/200,1,3)
+
+		repeat hit_cnt_total2(cnt)
+			pno=lpeek(debug_test_tnolist(_cnt),cnt*4)
+			if pno<0 {
+				ppp=1
+				pno&$fffffff
+				color 255
+				gmode 3,,,150
+			}
+		if peek(Terraindata_hitf(_tid),pno/3) or ppp{
+			poke Terraindata_hitf(_tid),pno/3,0
+			
+			dupptr d_i_d,varptr(dup_Triindex_debug(pno)),3*4,4
+
+			if (cnt\line_cntloop)=0 or ppp{
+				poly_line_cnt=0
+				repeat line_triangle
+					dup dup_dida,d_i_d(cnt)
+					dup dup_didb,d_i_d((cnt+1)\3)
+					hgcnvaxis var_x1(poly_line_cnt),var_y1(poly_line_cnt),var_z1,dup_vecxyz_debug(dup_dida)*dup_oscx,dup_vecxyz_debug(dup_dida+1)*dup_oscy,dup_vecxyz_debug(dup_dida+2)*dup_oscz,0
+					if var_z1<=1.0{
+						hgcnvaxis var_x2(poly_line_cnt),var_y2(poly_line_cnt),var_z2,dup_vecxyz_debug(dup_didb)*dup_oscx,dup_vecxyz_debug(dup_didb+1)*dup_oscy,dup_vecxyz_debug(dup_didb+2)*dup_oscz,0
+						if var_z2<=1.0{poly_line_cnt++}
+					}
+				loop
+				if poly_line_cnt {
+					ClipLine var_x1,var_y1,var_x2,var_y2, _winx,_winy,poly_line_cnt
+						repeat poly_line_cnt
+							if getCLerr(cnt)=0 {
+								hgline var_x1(cnt),var_y1(cnt),var_x2(cnt),var_y2(cnt)
+							}
+						loop
+				}
+						
+
+		
+				if ppp=1 {gmode 3,,,80:	fprt ""+(pno/3)+"("+tmapnolist(hit_mapcnt_total2)+")",var_x1,var_y1:ppp=0:color 0,255,0:hit_mapcnt_total2++}
+			}
+		}
+		loop	
+		selcpos
+		objsetfv cam_pos
+		selcang
+		objsetfv cam_ang
+	loop
+	falpha 255
+	if CAM_MODE_bak=CAM_MODE_LOOKAT {cammode@hsp CAM_MODE_LOOKAT}
+
+	hgdraw 6
+	tccnt=0
+
+return
+	#endif
+
+#endif
+
+
+#ifndef TerrainLine_debug
+#define global TerrainLine_debug  /**/
+#endif
+
+#global
+#endif
