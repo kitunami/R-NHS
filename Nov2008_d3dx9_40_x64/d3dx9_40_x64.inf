@@ -1,0 +1,31 @@
+
+[Version]
+Signature = "$Windows NT$"
+AdvancedINF = 2.0
+Provider = %MSFT%
+Class = %ExceptionClassDesc%
+ClassGUID = {F5776D81-AE53-4935-8E84-B0B283D8BCEF}
+CatalogFile = D3DX9_40_x64.cat
+ComponentId = {47B874D4-BE00-45E9-A650-A810B387E54A}
+DriverVer = 10-15-2008, 5.3.1.0904
+
+[SourceDisksNames]
+99 = %DiskName%,"Nov2008_D3DX9_40_x64.cab",0,,-1
+
+[SourceDisksFiles]
+D3DX9_40.dll = 99
+
+[DestinationDirs]
+DefaultDestDir = 11
+
+[DefaultInstall]
+CopyFiles = DirectX_System
+
+[DirectX_System]
+D3DX9_40.dll
+
+[Strings]
+MSFT                 = "Microsoft"
+ExceptionClassDesc   = "DirectX 9.0 Nov2008"
+DiskName             = "DirectX 9.0 Nov2008 cab"
+

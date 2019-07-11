@@ -1,0 +1,35 @@
+
+; ---- Common sections ----
+[Version]
+Signature   = "$CHICAGO$"
+AdvancedINF = 2.0
+Provider    = %MSFT%
+SetupClass  = BASE
+
+[Strings]
+MSFT        = "Microsoft"
+
+
+; ---- Windows XP 64bit ----
+[4.09.00.0904.00-4.09.00.0904.00_WinXP@64]
+NumberOfFiles=6
+Size=3462 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+infinst.exe D3DX9_40_x64_xp.inf
+
+
+; ---- Windows Server 2003 64bit ----
+[4.09.00.0904.00-4.09.00.0904.00_Srv2K3@64]
+NumberOfFiles=6
+Size=3462 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+infinst.exe D3DX9_40_x64_xp.inf
+
+
+; ---- Windows XP Version 2003 and beyond 64bit ----
+[4.09.00.0904.00-4.09.00.0904.00_WinNT@64]
+NumberOfFiles=6
+Size=3462 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+infinst.exe D3DX9_40_x64.inf
+
