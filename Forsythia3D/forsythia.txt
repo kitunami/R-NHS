@@ -1,0 +1,352 @@
+Forsythia3D マニュアル
+------------------------------------------------------------------------------
+
+■概要
+　Forsythia3D は、楽に 3D 描画を行うためのプラグインです。
+
+　Ｘファイルの読み込みと表示、モーション再生・モーションブレンド、
+　ライティング、および基本的な当たり判定と三角関数の計算が
+　実装されています。HLSL にも対応しています。
+
+
+■プラグインの使用方法
+　forsythia.hpi を HSP のインストールされているフォルダ、
+　forsythia.as  を common フォルダにコピーして、
+
+	#include "forsythia.as"
+
+　としてください。
+
+
+■連絡先等
+　MIA's HomePage [ http://diry.net/mia ]
+
+
+■更新履歴
+	2003/12/01
+		・ヘッダに各種 define を追加
+
+		・追加
+			fr_loadshader
+			fr_selshader
+			fr_seltech
+			fr_setshadertex
+			fr_setshaderarg
+			fr_getcapssize
+			fr_getcaps
+			fr_drawsprite
+			fr_settss
+
+	2003/10/11
+		・ヘッダに各種 define を追加
+
+		・追加
+			fr_setlightparam
+			fr_intersectL
+			fr_setobjcolor
+			fr_loadtex
+			fr_freetex
+			fr_settex
+			frp_add
+			frp_update
+			frp_draw
+			fr_vecftow
+			fr_vecltof
+			fr_getframeptr
+			fr_getframename
+			fr_free
+			fr_bye
+
+		・仕様変更
+			fr_setfont
+
+
+■命令一覧
+　３次元の値として設定するパラメータは、
+　16bit 固定小数点で指定してください。光の強さも同じです。
+　回転は一周を 65536 で分割した回転量で指定してください。
+
+
+////////////////////////////////
+// 最低限覚えておけばいい命令 //
+////////////////////////////////
+○fr_init
+	screen/bgscr で作られた画面に対して初期化を行います。
+	Forsythia で使用できるのは、１つの画面だけです。
+	画面はパレット・フルカラーのどちらで作成されていても構いません。
+
+○fr_begin
+	描画を開始します。
+	fr_draw / frp_draw を呼び出す前に実行してください。
+
+○fr_end
+	描画を終了し、画面を更新します。
+	redraw 命令と同じようなものです。
+
+○fr_load "filename", p2
+	モデル番号 p2 に、X ファイルを読み込みます。
+
+○fr_draw p1
+	p1 番のオブジェクトを描画します。
+
+○fr_addlight p1, p2
+	ライト p1 を追加します。
+	ライトが一つもない場合、全てのモデルは真っ黒に表示されます。
+	p2 には、光源の種類を指定します。
+		1 (D3DLIGHT_POINT)       : 点光源
+		2 (D3DLIGHT_SPOT)        : スポットライト
+		3 (D3DLIGHT_DIRECTIONAL) : 平行光源
+
+○fr_setlightparam param, p2
+	p2 番のライトのパラメータを一括設定します。
+	param は数値型の配列で、以下のような意味を持ちます。
+	param = 色R, G, B, スペキュラ色R, G, B, 位置X, Y, Z, 向きX, Y, Z, 減衰率1, 2, 3
+
+○fr_setambient r, g, b
+	環境光を設定します。オブジェクト側のマテリアルに
+	環境光が設定されていない場合は、ここで値を設定しても効果はありません。
+
+○fr_setposture param, p2
+	p2 番のオブジェクトの姿勢を設定します。
+	param は数値型の配列で、以下のような意味を持ちます。
+	param = 位置X, Y, Z, 回転X, Y, Z, スケールX, Y, Z, モーション時刻
+
+○fr_setcampos x, y, z
+	視点の位置を設定します。
+
+○fr_setcamtarget x, y, z
+	注視点の位置を設定します。
+
+○fr_setobjcolor color, p2
+	p2 番のモデルの色を変更します。
+	color は数値型の配列で、以下のような意味を持ちます。
+
+	color = R倍率, G倍率, B倍率, A倍率
+
+	標準の色に戻すには、
+
+	color = 1<<16, 1<<16, 1<<16, 1<<16
+
+	とします。
+
+
+////////////////////////////////////////
+// 知りたい人だけ知っておけばいい命令 //
+////////////////////////////////////////
+
+○fr_free p1
+	モデル番号 p1 番を開放します。
+
+○fr_loadtex "filename", p2
+	テクスチャ番号 p2 に、テクスチャファイルを読み込みます。
+
+○fr_freetex p1
+	テクスチャ番号 p1 番を開放します。
+
+○fr_settex p1
+	テクスチャ番号 p1 番を使用します。
+
+○fr_setlight??? p1, p2, p3, p4
+	p1 番のライトのパラメータを設定します。
+	以下の５命令が使用できます。
+	fr_setlightcol ライト番号, 色R, G, B
+	fr_setlightspq ライト番号, スペキュラ色R, G, B
+	fr_setlightpos ライト番号, 位置X, Y, Z
+	fr_setlightdir ライト番号, 向きX, Y, Z
+	fr_setlightatt ライト番号, 減衰率1, 2, 3
+
+○fr_removelight p1
+	p1 番のライトを削除します。
+
+○fr_setcolor r, g, b, a
+	fr_mes で表示される文字色、および fr_drawsprite で
+	描画されるポリゴンの色を設定します。
+	a は不透明度で、0 で透明、255 で不透明となります。
+
+○fr_bgcolor r, g, b, a
+	画面の背景色を設定します。
+
+○fr_setfont param, "font"
+	fr_mes で表示される書体を設定します。
+	param は整数型の配列で、内容は以下のようになります。
+	param = 幅(0で自動), 高さ(0で自動), 修飾(HSP互換)
+
+○fr_mes "message", x, y
+	pos x,y : mes "message" の代理です。
+	通常の文字表示命令の代わりに使用してください。
+
+○fr_setrs p1, p2
+	SetRenderState(p1, p2) を発行します。
+	p1 に指定できる数値は forsythia.as に define してあります。
+	値の組み合わせの詳細は MSDN の DirectX ヘルプ等を参照してください。
+
+○fr_setcamup x, y, z
+	カメラの上方向の向きを設定します。
+	標準では、0, 1, 0 が指定されています。
+
+○fr_settrackenable p1, p2, p3
+	p1 番のオブジェクトが持つ p2 番のモーションの有効・無効を設定します。
+	p3=0 で無効、p3=1 で有効です。
+	使っていないモーションを無効にしておくと、負荷が下がります。
+
+○fr_settrackweight p1, p2, p3
+	p1 番のオブジェクトが持つ p2 番のモーションのウェイトを設定します。
+	p3=0 で 0.0、p3=65536 で 1.0 となります。
+	モーションブレンド時に使用します。
+
+○fr_getanimnum p1
+	p1 番のオブジェクトが持つモーションの数を stat に返します。
+
+○fr_getsintbl p1, p2
+○fr_getcostbl p1, p2
+	サイン・コサインのテーブルを取得します。
+	p1 は数値型の配列、p2 には、配列のサイズを指定してください。
+	0 ～ 2*PI を p2 で分割し、三角関数を求めた結果を 16ビット固定小数点に
+	変換し、p1 に代入します。p2 には、65536 を指定しておくと便利です。
+
+○fr_intersect param, p2
+	半直線とメッシュが交差する、最も近い点を取得します。
+	param は数値型の配列で、当たり判定に使用するパラメータを
+	指定します。内容は以下の通りです。
+	param = 位置X, Y, Z, 方向X, Y, Z
+
+	p2 には、当たり判定を取るオブジェクト番号を指定してください。
+
+	param.6～8 に、当たり判定の結果が返ります。
+
+	param.6 : 当たった点との距離
+		メッシュと半直線の交点が返されます。
+		（param.6 = 65536 のとき、位置＋方向 が交点となります）
+		当たっていない場合は -1 が返されます。
+
+	param.7 : 当たった面の番号
+		当たっていない場合は -1 が返されます。
+
+	param.8 : 当たった面のマテリアル番号
+		当たっていない場合は -1 が返されます。
+
+○fr_intersectL param, p2, p3
+	fr_intersect と同じ機能ですが、p3 で指定された
+	モデルの座標系で半直線を飛ばします。
+
+○fr_atan p1, p2, p3
+	アークタンジェントを取得します。
+	p1 には、atan2(p2, p3) の結果が代入されます。
+
+○fr_len p1, p2, p3, p4
+	(0, 0, 0) から (p2, p3, p4) までの距離を p1 に代入します。
+
+○fr_proj param
+	視点のプロジェクション行列を変更します。
+	param の内容は以下の通りです。
+	param = 視野角, 画面幅, 画面高, NearZ, FarZ
+
+	NearZ より近くにあるポリゴン、FarZ より遠くにあるポリゴンは
+	カットされます。デフォルトでは、
+		param = 1<<16, winx, winy, 1<16/100, 50<<16
+	が指定されています。
+
+○fr_vecftow vec, p2, p3, p4
+	モデル座標をワールド座標に変換します。
+	vec.p3 から続く３要素をモデル p2 番のローカル座標とみなし、
+	vec.p4 から続く３要素にワールド座標を出力します。
+
+○fr_getframeptr p1, p2, p3
+	モデル p2 番の、関節 p3 番を p1 に取得します。
+	ここで取得した値は、fr_vecltof で使用します。
+
+○fr_getframename p1, p2
+	モデル p1 番の、関節 p2 番の名前を refstr に代入します。
+	関節に名前が付いていない場合は、空の文字列になります。
+
+○fr_vecltof vec, p2, p3, p4
+	モデル内の関節における座標をモデル座標に変換します。
+	vec.p3 から続く３要素を関節 p2 番のローカル座標とみなし、
+	vec.p4 から続く３要素にワールド座標を出力します。
+	p2 には、gr_getframeptr で取得した値を渡してください。
+
+○frp_add param, p2
+	パーティクルリストの p2 番にパーティクルを追加します。
+	param の内容は、以下のようになります。
+
+	param = 生存時間, 位置X, Y, Z, 速度X, Y, Z, 加速度X, Y, Z, 色, 色変化量
+
+	色および色変化量は、0xAARRGGBB の形で指定してください。
+	色変化量は、0x80808080 のときに一定となります。
+	フェードアウトさせたい場合は 0x80808080 未満の値を指定してください。
+
+	現状、一度追加したパーティクルを制御することはできません。
+
+○frp_update p1
+	パーティクルリストの p1 番 の時間を進めます。
+	生存時間が過ぎたパーティクルは、自動的に消滅します。
+
+○frp_draw p1
+	fr_settex で指定されているテクスチャを使用して、
+	パーティクルリスト p1 番の中で生存しているパーティクルを全て描画します。
+	fr_setrs 命令を使用して、ポイントスプライトを有効化されていない場合は、
+	何も描画されません。
+
+		fr_setrs D3DRS_POINTSPRITEENABLE, 1
+		fr_setrs D3DRS_POINTSIZE, 20.0f
+
+	などとしてください。
+
+○fr_drawsprite p1
+	選択されているテクスチャを使って、四角ポリゴンを描画します。
+	param の内容は、以下のようになります。
+
+	param = x1, y1, x2, y2, u1, v1, u2, v2
+
+	x1～y2 はピクセル単位の座標、u1～v2 は 16 ビット固定小数で、
+	テクスチャの左上を 0(=0.0)、右下を 65536(=1.0) として指定します。
+
+	ポリゴンは fr_setcolor で指定された色で描画されます。
+
+○fr_settss p1, p2
+	SetTextureStageState(p1, p2) を発行します。
+	p1 に指定できる数値は forsythia.as に define してあります。
+	値の組み合わせの詳細は MSDN の DirectX ヘルプ等を参照してください。
+
+○fr_getcapssize p1
+	p1 に、デバイス能力の一覧のサイズを代入します。
+
+○fr_getcaps p1
+	p1 に、デバイス能力の一覧を取得します。
+	デバイス能力の詳細は MSDN の DirectX ヘルプ等を参照してください。
+
+
+
+////////////////////////////////////////
+// シェーダーを使う人が知っておく命令 //
+////////////////////////////////////////
+
+○fr_loadshader "filename", p2
+	シェーダ番号 p2 に、シェーダを読み込みます。
+	シェーダは HLSL で記述されている必要があります。
+	HLSL に文法ミスがあった場合は stat に 0 以外の値が返され、
+	refstr にエラーの詳細が返ります。
+
+○fr_selshader p1
+	p1 番のシェーダを選択します。
+	この状態で fr_draw を呼ぶことで、指定したシェーダを
+	使った描画を行うことができます。
+	シェーダを無効化するには、p1 に無効な値 (-1 等) を指定します。
+
+○fr_seltech p1, "technique"
+	p1 番のシェーダに複数のテクニックが含まれている場合、
+	この命令を使って使用するテクニックを選択します。
+
+○fr_setshadertex iTex, iShader, iArg
+	iShader 番のシェーダの ShaderTex[iArg] に渡すテクスチャを
+	iTex 番のテクスチャに設定します。
+
+○fr_setshaderarg param, iShader, iArg
+	iShader 番のシェーダの ShaderTex[iArg] に渡すベクトルを設定します。
+	param は、4 要素をもつ 16bit 固定小数値として扱われます。
+
+	param = 0, 0, 1<<15, 1<<16 : fr_setshaderarg param, 0, 4
+
+	とした場合、シェーダ内の ShaderArg4 は (0.0, 0.0, 0.5, 1.0) という
+	値に設定されます。
+
