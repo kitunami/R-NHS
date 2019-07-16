@@ -1,0 +1,67 @@
+
+; ---- Common sections ----
+[Version]
+Signature   = "$CHICAGO$"
+AdvancedINF = 2.0
+Provider    = %MSFT%
+SetupClass  = BASE
+
+[Strings]
+MSFT        = "Microsoft"
+
+
+; ---- Windows 2000 ----
+[4.09.00.0904.00-4.09.00.0904.00_Win2K]
+NumberOfFiles=5
+Size=2178 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+D3DX9_39_x86_xp.inf, x86_Install
+
+
+; ---- Windows XP ----
+[4.09.00.0904.00-4.09.00.0904.00_WinXP]
+NumberOfFiles=5
+Size=2178 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+D3DX9_39_x86_xp.inf, x86_Install
+
+
+; ---- Windows XP 64bit ----
+[4.09.00.0904.00-4.09.00.0904.00_WinXP@64]
+NumberOfFiles=5
+Size=2178 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+D3DX9_39_x86_xp.inf, x64_Install
+
+
+; ---- Windows Server 2003 ----
+[4.09.00.0904.00-4.09.00.0904.00_Srv2K3]
+NumberOfFiles=5
+Size=2178 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+D3DX9_39_x86_xp.inf, x86_install
+
+
+; ---- Windows Server 2003 64bit ----
+[4.09.00.0904.00-4.09.00.0904.00_Srv2K3@64]
+NumberOfFiles=5
+Size=2178 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+D3DX9_39_x86_xp.inf, x64_install
+
+
+; ---- Windows XP Version 2003 and beyond ----
+[4.09.00.0904.00-4.09.00.0904.00_WinNT]
+NumberOfFiles=5
+Size=2178 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+D3DX9_39_x86.inf, x86_install
+
+
+; ---- Windows XP Version 2003 and beyond 64bit ----
+[4.09.00.0904.00-4.09.00.0904.00_WinNT@64]
+NumberOfFiles=5
+Size=2178 ;approximately total file size (Size * 1024 bytes)
+CopyCount=1
+D3DX9_39_x86.inf, x64_install
+
