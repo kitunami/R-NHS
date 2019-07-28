@@ -1,0 +1,411 @@
+;_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
+;
+;	Paint Walkers
+;
+;_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
+
+	;モジュール
+	#include "forsythia.as"
+	#include "d3m.hsp"	;タイマー用
+	#include "pcbnet2.as"
+	#module	;回転用変換命令
+		#defcfunc rad2fr double p1
+			return int((double(1<<16)*p1)/(M_PI*2))
+	#global
+
+	;システム変数
+	#define title_name "Paint Attack! v0.00"	;タイトル
+	#define MAX_P 4	;最大人数（変更時、C_mapあたりのモデル番号に注意）
+	#define L_NUM 1000	;移動量定数
+	#define GAME_TIME 180000	;試合時間
+
+	;モーション番号
+	#define M_move 0	;移動
+	#define M_stop 1	;待機
+
+	;オブジェクト番号
+	dim C_man,MAX_P
+	repeat MAX_P
+		C_man(cnt) = cnt
+	loop
+	#define C_map0 6	;床
+	#define C_map1 7	;壁
+	#define C_sbn 8	;シート
+
+	;その他
+	#define D_MODE 1	;デバッグモード
+
+	bgscr 0,ginfo(20),ginfo(21),,0,0	;画面初期化
+	if (D_MODE == 1){ screen 1,300,600,,ginfo(12)-300,0 : gsel 1,2 : gsel 0 }
+
+	fr_init	;fr初期化
+
+	port = 50000
+	udpsock sock,port
+	if (stat != 0){ dialog "Error\nソケットの作成に失敗しました。",1 : end }
+	onexit *esc
+
+////////////////////////////////////////////////////////////
+
+*game_select
+	cls : objsize 100,20
+	mes "ゲームモード"
+	combox G_mode,,"ランダム\nフレンド\nテスト"
+	switch G_mode
+		case 0
+			mes "準備中..."
+		swbreak
+		case 1
+			button goto "部屋を作る",*gf_make
+			button goto "部屋を探す",*gf_enter
+		swbreak
+		case 2
+			combox T_color,,"赤\n青"
+			button goto "スタート",*game_set
+		swbreak
+	swend
+	button goto "End",*esc
+	G_lmode = G_mode
+
+*game_select_roop
+	if (G_mode != G_lmode){ goto *game_select }
+
+	await 1
+
+	goto *game_select_roop
+
+
+
+*gf_make
+
+	stop
+
+
+
+*gf_enter
+
+	stop
+
+	
+
+////////////////////////////////////////////////////////////
+
+*game_set
+	cls
+	stage = 1
+	mynum = 1
+
+	; 平行光源
+	fr_addlight    0, D3DLIGHT_DIRECTIONAL
+	fr_setlightdir 0, -10<<16, -1<<16, -1<<16
+	fr_setlightcol 0, 1<<16, 1<<16, 1<<16
+	fr_setlightspq 0, 1<<16, 1<<16, 1<<16
+
+	fr_addlight    1, D3DLIGHT_DIRECTIONAL
+	fr_setlightdir 1, 1<<16, -1<<16, 1<<16
+	fr_setlightcol 1, 1<<16, 1<<16, 1<<16
+	fr_setlightspq 1, 1<<16, 1<<16, 1<<16
+
+	; モデルデータの読み込み
+	repeat MAX_P
+		fr_load "./model/man.x", C_man(cnt)
+		if (stat != 0){ dialog "ファイル[./model/man.x]が見つかりません" : end }
+	loop
+	fr_load "./stage/stage"+strf("%02d",stage)+"/floor.x", C_map0	;床
+	if (stat != 0){ dialog "床ファイルが見つかりません" : end }
+	fr_load "./stage/stage"+strf("%02d",stage)+"/wall.x", C_map1	;壁
+	if (stat != 0){ dialog "壁ファイルが見つかりません" : end }
+
+	; レンダリング設定
+	fr_setrs D3DRS_ALPHABLENDENABLE, 1
+	fr_setrs D3DRS_SPECULARENABLE, 1
+	fr_bgcolor 0x00, 0x00, 0x40
+
+	dim P_man,10,MAX_P	;キャラクターのパラメータ
+	repeat MAX_P
+		P_man(6,cnt) = 1<<16, 1<<16, 1<<16	;サイズ
+	loop
+
+	dim P_map,10	;マップのパラメータ
+	P_map = 0,0,0, 0,0,0, 1<<16,1<<16,1<<16
+	fr_setposture P_map, C_map0	;パラメータを適用
+	fr_setposture P_map, C_map1
+
+	;マップのサイズ
+	notesel stage_date
+	noteload "./stage/stage"+strf("%02d",stage)+"/date.txt"
+	noteget map_x,0 : noteget map_y,1
+	map_x = int(map_x)
+	map_y = int(map_y)
+
+	;マップデータとモデル読み込み
+	k_cnt = C_sbn
+	repeat map_y
+		repeat map_x
+			dim P_set,10
+			P_set = -(((k_cnt-C_sbn)/2)\map_x)*(1<<16),10,-(((k_cnt-C_sbn)/2)/map_x)*(1<<16), 0,0,0, 1<<16,1<<16,1<<16
+			fr_load "./stage/seat/r_seat.x", k_cnt
+			if (stat != 0){ dialog "ファイル[./stage/seat/r_seat.x]が見つかりません" : end }
+			fr_setposture P_set, k_cnt
+			fr_load "./stage/seat/b_seat.x", k_cnt+1
+			if (stat != 0){ dialog "ファイル[./stage/seat/b_seat.x]が見つかりません" : end }
+			fr_setposture P_set, k_cnt+1
+			k_cnt += 2
+			boxf 0,ginfo(13)-10,ginfo(12)*(k_cnt-C_sbn)/(map_x*map_y*2),ginfo(13)
+			pos ginfo(12)-90,ginfo(13)-30 : mes "Loading..."
+		loop
+	loop
+
+	;マップの色識別フラグ
+	dim dr_flag, map_x*map_y
+
+	dim x,MAX_P : dim y,MAX_P : dim z,MAX_P : dim ry,MAX_P : dim anim,MAX_P
+
+	mouse -1	;カーソルの非表示
+	allcnt = 0	;カウント用変数
+
+	udpmjoin sock,"239.255.10.0"
+	if (stat != 0){ dialog  "マルチキャストセッションへの参加に失敗しました。",1 : end }
+	udpsendto sock,"239.255.10.0",port
+
+	;パラメータの初期値等
+	x(mynum) = 0 : y(mynum) = 1<<16 : z(mynum) = -4<<16 : crx = 0.0 : cry = 0.0
+	mov = 2*L_NUM	;移動量
+	T_color++
+	D_point = 0	;ポイント
+
+	s_time = d3timer()
+
+////////////////////////////////////////////////////////////
+	
+*main
+	stick key
+	if (key == 128){ goto *esc }
+	if key = 32 : T_color = (3-T_color)
+
+	;移動
+	gosub *move
+
+	;カメラ設定
+	gosub *setcam
+
+	;キャラクターのパラメータ設定
+	repeat MAX_P
+		P_man(0,cnt) = x(cnt), y(cnt), z(cnt), rx, ry(cnt), rz
+		P_man(9,cnt) = anim(cnt)
+		fr_setposture P_man(0,cnt), C_man(cnt)
+	loop
+
+	;当たり判定
+	gosub *hitcheck
+
+	;通信データ受け取り
+	udpcheck P_udp,sock
+	if (P_udp != 0){ gosub *recv }
+
+	;時間確認
+	gosub *timecheck
+
+	;遅延部分（描写、データ送信など）
+	if (all_cnt\3 == 0){ gosub *delay }
+
+	;開発用
+	if (D_MODE == 1){ gosub *debug }
+
+	all_cnt++	;カウント加算
+	await 1000/60	;FPSは60
+	
+	goto *main
+
+////////////////////////////////////////////////////////////
+
+*move
+	;移動
+	getkey k_up,'W'
+	getkey k_dw,'S'
+	getkey k_ri,'D'
+	getkey k_le,'A'
+	mx = 0.0 : mz = 0.0
+	if (k_up+k_dw+k_ri+k_le > 1){ mov = int(sqrt(2)*L_NUM) } else { mov = 2*L_NUM }
+	if (k_up == 1){ mx += double(mov)*sin(crx)  : mz += double(mov)*cos(crx) }
+	if (k_dw == 1){ mx += -double(mov)*sin(crx) : mz += -double(mov)*cos(crx) }
+	if (k_ri == 1){ mx += double(mov)*cos(crx)  : mz += -double(mov)*sin(crx) }
+	if (k_le == 1){ mx += -double(mov)*cos(crx) : mz += double(mov)*sin(crx) }
+
+	;モーションの起動、停止
+	if (k_up+k_dw+k_ri+k_le == 0){ anim(mynum) = 0 } else { anim(mynum) += 2*L_NUM }
+
+	return
+
+
+
+*setcam
+	;カーソル座標取得
+	cam_mx = ginfo_winx/2-mousex
+	crx -= double(cam_mx)/600
+	cam_my = ginfo_winy/2-mousey
+	cry -= double(cam_my)/600
+
+	;カーソル設定
+	mouse -1
+	mouse ginfo_winx/2,ginfo_winy/2
+
+	; カメラ設定
+	cam_y = y(mynum)+double(1<<16)*tan(cry)
+	if (cam_y < 0){ cam_y = 0 }
+	fr_setcampos x(mynum)+double(-2<<16)*sin(crx), cam_y, z(mynum)+double(-2<<16)*cos(crx)
+	ry(mynum) = rad2fr(crx) 
+	fr_setcamtarget x(mynum), y(mynum), z(mynum)
+
+	return
+
+
+
+*hitcheck
+	;当たり判定（床）
+	dim P_gcheck,9
+	P_gcheck = x(mynum),y(mynum),z(mynum), 0,-1<<16,0
+	fr_intersect P_gcheck, C_map0
+	if (P_gcheck(7) > -1){
+		;落下時の衝突判定
+		if (gra >= P_gcheck(6)){
+			y(mynum) -= P_gcheck(6) : gra = 0
+		} else {
+			y(mynum) -= gra
+			gra += L_NUM/10
+		}
+		;地面の色塗り替え
+		if (P_gcheck(6) == 0){
+			if (dr_flag(P_gcheck(7)/2) != T_color){
+				udpput "cmd"+str(P_gcheck(7)/2),sock
+				D_point++
+			}
+			dr_flag(P_gcheck(7)/2) = T_color
+		}
+	}
+	;ジャンプ
+	if ((key == 16) & (P_gcheck(6) == 0)){ gra = -3*L_NUM }
+
+	;当たり判定（壁）
+	dim P_ucheck,9
+	P_ucheck = x(mynum),y(mynum)+(1<<8),z(mynum), 0,0,1<<16
+	fr_intersect P_ucheck, C_map1
+	dim P_dcheck,9
+	P_dcheck = x(mynum),y(mynum)+(1<<8),z(mynum), 0,0,-1<<16
+	fr_intersect P_dcheck, C_map1
+	dim P_rcheck,9
+	P_rcheck = x(mynum),y(mynum)+(1<<8),z(mynum), 1<<16,0,0
+	fr_intersect P_rcheck, C_map1
+	dim P_lcheck,9
+	P_lcheck = x(mynum),y(mynum)+(1<<8),z(mynum), -1<<16,0,0
+	fr_intersect P_lcheck, C_map1
+
+	if ((mz > 0) & (P_ucheck(6) < 1<<14)){ mz = 0.0 }
+	if ((mz < 0) & (P_dcheck(6) < 1<<14)){ mz = 0.0 }
+	if ((mx > 0) & (P_rcheck(6) < 1<<14)){ mx = 0.0 }
+	if ((mx < 0) & (P_lcheck(6) < 1<<14)){ mx = 0.0 }
+
+	;移動量を座標に加算
+	x(mynum) += mx : z(mynum) += mz
+
+	return
+
+
+
+*timecheck
+	n_time = d3timer()
+
+	if (n_time-s_time > GAME_TIME){ goto *game_end }
+
+	return
+
+
+
+*recv
+	sdim D_str,64
+	sdim D_inf,64
+	udpget D_str,64,sock
+	udpinfo D_inf,sock
+
+	if ((instr(D_str,0,"pox") == 0) & (strmid(D_str,3,1) != mynum)){ x(strmid(D_str,3,1)) = strmid(D_str,4,16) }
+	if ((instr(D_str,0,"poy") == 0) & (strmid(D_str,3,1) != mynum)){ y(strmid(D_str,3,1)) = strmid(D_str,4,16) }
+	if ((instr(D_str,0,"poz") == 0) & (strmid(D_str,3,1) != mynum)){ z(strmid(D_str,3,1)) = strmid(D_str,4,16) }
+	if ((instr(D_str,0,"arg") == 0) & (strmid(D_str,3,1) != mynum)){ ry(strmid(D_str,3,1)) = strmid(D_str,4,16) }
+	if ((instr(D_str,0,"ani") == 0) & (strmid(D_str,3,1) != mynum)){ anim(strmid(D_str,3,1)) = strmid(D_str,4,16) }
+
+	return
+
+
+
+*delay
+	;オブジェクトの描写
+	fr_begin
+		repeat MAX_P
+			fr_draw C_man(cnt)
+		loop
+		fr_draw C_map0
+		fr_draw C_map1
+		repeat map_x*map_y
+			if (dr_flag(cnt) == 1){ fr_draw cnt*2+C_sbn }
+			if (dr_flag(cnt) == 2){ fr_draw cnt*2+C_sbn+1 }
+		loop
+	fr_end
+
+	;通信データ送信（位置など）
+	udpput "pox"+str(mynum)+str(x(mynum))   ,sock
+	udpput "poy"+str(mynum)+str(y(mynum))   ,sock
+	udpput "poz"+str(mynum)+str(z(mynum))   ,sock
+	udpput "arg"+str(mynum)+str(ry(mynum))  ,sock
+	udpput "ani"+str(mynum)+str(anim(mynum)),sock
+
+	return
+
+
+
+*debug
+	gsel 1 : cls
+		mes
+		;mes "n（床） : "+str(P_gcheck(7)/2) : mes "x（床） : "+str((P_gcheck(7)/2)\map_x) : mes "y（床） : "+str(P_gcheck(7)/(map_x*2))
+		mes "x（現） : "+abs(x(mynum)*2-(1<<16))/(2<<16) : mes "y（現） : "+abs(z(mynum)*2-(1<<16))/(2<<16)
+		mes "x : "+x(mynum) : mes "y : "+z(mynum) : mes "ry : "+ry(mynum)
+		mes "mx : "+mx : mes "my : "+mz
+		mes "回転 : "+crx
+		mes "アニメ : "+anim(mynum)
+		mes "経過時間 : "+str(n_time-s_time)
+		mes "map_x : "+map_x : mes "map_y : "+map_y
+		mes
+		mes D_point
+		mes
+	gsel 0
+
+	return
+
+
+
+*game_end
+	cls
+	dim T_point,2
+	repeat map_x*map_y
+		if (dr_flag(cnt) == 1){ T_point(0)++ }
+		if (dr_flag(cnt) == 2){ T_point(1)++ }
+	loop
+
+	mes "赤 : "+T_point(0)
+	mes "青 : "+T_point(1)
+
+	udpmdrop sock,"239.255.10.0"
+
+	repeat
+		stick key
+		if key = 32 : goto *game_set
+		if key = 128 : end
+		await 1
+	loop
+
+
+
+*esc
+	udpclose sock
+	end
+
+
