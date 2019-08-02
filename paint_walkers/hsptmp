@@ -1,23 +1,28 @@
 ;_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 ;
 ;	Paint Walkers
+;		made by krag
 ;
 ;_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/_/
 
 	;モジュール
-	#include "forsythia.as"
-	#include "d3m.hsp"	;タイマー用
-	#include "pcbnet2.as"
-	#module	;回転用変換命令
+	#include "forsythia.as"		;３Ｄ用
+	#include "d3m.hsp"			;タイマー用
+	#include "pcbnet2.as"		;通信用
+	
+	#module	;回転用変換命令（65536で一回転）
 		#defcfunc rad2fr double p1
 			return int((double(1<<16)*p1)/(M_PI*2))
 	#global
 
 	;システム変数
-	#define title_name "Paint Attack! v0.00"	;タイトル
-	#define MAX_P 4	;最大人数（変更時、C_mapあたりのモデル番号に注意）
-	#define L_NUM 1000	;移動量定数
-	#define GAME_TIME 180000	;試合時間
+	#define title_name "Paint Attack!"	;タイトル
+	#define MAX_P 4								;最大人数（変更時、C_mapあたりのモデル番号に注意）
+	#define L_NUM 1000							;移動量定数
+	#define GAME_TIME 180000					;試合時間
+	#define AD_lobby "239.255.9.0"				;ロビーのIPアドレス
+	AD_mine = ""
+	ownip AD_mine								;自分のIPアドレス
 
 	;モーション番号
 	#define M_move 0	;移動
@@ -30,10 +35,14 @@
 	loop
 	#define C_map0 6	;床
 	#define C_map1 7	;壁
-	#define C_sbn 8	;シート
+	#define C_sbn 8		;シート
+
+	sdim name,8,MAX_P
 
 	;その他
-	#define D_MODE 1	;デバッグモード
+	#define D_MODE 0	;デバッグモード
+
+	home_dir = dir_cur	;ホームディレクトリ
 
 	bgscr 0,ginfo(20),ginfo(21),,0,0	;画面初期化
 	if (D_MODE == 1){ screen 1,300,600,,ginfo(12)-300,0 : gsel 1,2 : gsel 0 }
@@ -47,8 +56,20 @@
 
 ////////////////////////////////////////////////////////////
 
+*status_set
+	cls
+	name(0) = "PC"
+	mes "名前"
+	input name(0),,,8
+	button goto "スタート",*game_select
+
+	stop
+
+
+
 *game_select
 	cls : objsize 100,20
+	mes "ようこそ "+name(0)+" さん"
 	mes "ゲームモード"
 	combox G_mode,,"ランダム\nフレンド\nテスト"
 	switch G_mode
@@ -56,10 +77,12 @@
 			mes "準備中..."
 		swbreak
 		case 1
-			button goto "部屋を作る",*gf_make
-			button goto "部屋を探す",*gf_enter
+			button goto "部屋を作る",*gf_make_set
+			button goto "部屋を探す",*gf_enter_set
 		swbreak
 		case 2
+			mynum = "0"
+			input mynum
 			combox T_color,,"赤\n青"
 			button goto "スタート",*game_set
 		swbreak
@@ -76,13 +99,98 @@
 
 
 
-*gf_make
+*gf_make_set
+	cls
+	mes "部屋作成
+	mes "部屋番号（０～２００）"
+	input room_num,,,3
+	mes "部屋名"
+	input room_name,,,3
+
+	button goto "作成",*gf_make
+	button goto "やめる",*game_select
 
 	stop
 
 
+*gf_make
+	cls
+	if ((int(room_num) < 0) | (int(room_num) > 200)){
+		dialog "部屋番号は半角数字の０～２００で入力してください。",1
+		goto *gf_make_set
+	}
+	udpmjoin sock,AD_lobby
+	if (stat != 0){ dialog "マルチキャストセッションへの参加に失敗しました。",1 : end }
+	udpsendto sock,AD_lobby,port
+
+	mes "現在待機中です。"
+
+	button goto "やめる",*gf_close
+
+	repeat
+		udpcheck P_udp,sock
+		if (P_udp != 0){ gosub *gf_make_recv }
+		await 1
+	loop
+
+	stop
+
+*gf_make_recv
+	sdim D_str,64
+	sdim D_inf,64
+	udpget D_str,64,sock
+	udpinfo D_inf,sock
+
+	if (instr(D_str,0,"enl") == 0){ udpput "部屋名 : "+room_name+"/ 部屋番号 : "+room_num,sock }
+	if (instr(D_str,0,"eul") == 0){  }
+
+	return
+
+*gf_close
+	udpmdrop sock,AD_lobby
+	goto *game_select
+
+
+
+*gf_enter_set
+	udpmjoin sock,AD_lobby
+	if (stat != 0){ dialog "マルチキャストセッションへの参加に失敗しました。",1 : end }
+	udpsendto sock,AD_lobby,port
 
 *gf_enter
+	cls
+	udpput "enl",sock
+
+	notesel room_list
+	objsize ginfo(20)-60,ginfo(21)
+	listbox sel_room_list,,room_list : ID_room_list = stat
+
+	objsize 60,20 : pos ginfo(20)-60,0
+	button goto "更新",*gf_enter
+	button goto "入る",*gf_enter_room
+	button goto "やめる",*gf_close
+
+	repeat
+		udpcheck P_udp,sock
+		if (P_udp != 0){ gosub *gf_enter_recv }
+		await 1
+	loop
+
+*gf_enter_recv
+	sdim D_str,64
+	sdim D_inf,64
+	udpget D_str,64,sock
+	udpinfo D_inf,sock
+
+	if ((strmid(D_str,0,3) == "部屋名") & (instr(room_list,0,strmid(D_str,instr(D_str,6,":")+2,3)) == -1)){
+		room_list += D_str+"\n"
+		objprm ID_room_list,room_list
+	}
+
+	return
+
+*gf_enter_room
+	udpput "eul"
 
 	stop
 
@@ -91,11 +199,17 @@
 ////////////////////////////////////////////////////////////
 
 *game_set
+	;udpmdrop sock,
 	cls
-	stage = 1
-	mynum = 1
+	stage = 1			;ステージ番号
+	dim model_name,4	;モデル名
+	mynum = int(mynum)
+	repeat 4
+		model_name(cnt) = "man"
+	loop
+	model_name(mynum) = "bonnya"	;（仮）自分のモデルは「ぼんにゃ」としておく
 
-	; 平行光源
+	; 平行光源の作成
 	fr_addlight    0, D3DLIGHT_DIRECTIONAL
 	fr_setlightdir 0, -10<<16, -1<<16, -1<<16
 	fr_setlightcol 0, 1<<16, 1<<16, 1<<16
@@ -108,9 +222,11 @@
 
 	; モデルデータの読み込み
 	repeat MAX_P
-		fr_load "./model/man.x", C_man(cnt)
-		if (stat != 0){ dialog "ファイル[./model/man.x]が見つかりません" : end }
+		chdir home_dir+"/model/"+model_name(cnt)
+		fr_load "./model.x", C_man(cnt)
+		if (stat != 0){ dialog "モデルファイルが見つかりません" : end }
 	loop
+	chdir home_dir
 	fr_load "./stage/stage"+strf("%02d",stage)+"/floor.x", C_map0	;床
 	if (stat != 0){ dialog "床ファイルが見つかりません" : end }
 	fr_load "./stage/stage"+strf("%02d",stage)+"/wall.x", C_map1	;壁
@@ -165,7 +281,7 @@
 	allcnt = 0	;カウント用変数
 
 	udpmjoin sock,"239.255.10.0"
-	if (stat != 0){ dialog  "マルチキャストセッションへの参加に失敗しました。",1 : end }
+	if (stat != 0){ dialog "マルチキャストセッションへの参加に失敗しました。",1 : end }
 	udpsendto sock,"239.255.10.0",port
 
 	;パラメータの初期値等
@@ -176,12 +292,19 @@
 
 	s_time = d3timer()
 
+	;すべてのモーションの有効化
+	fr_settrackenable C_man(mynum),0,1
+	fr_settrackenable C_man(mynum),1,1
+
+	;モーションのウェイト設定
+	fr_settrackweight C_man(mynum),0,1<<16
+	fr_settrackweight C_man(mynum),1,0
+
 ////////////////////////////////////////////////////////////
 	
 *main
 	stick key
 	if (key == 128){ goto *esc }
-	if key = 32 : T_color = (3-T_color)
 
 	;移動
 	gosub *move
@@ -232,8 +355,19 @@
 	if (k_ri == 1){ mx += double(mov)*cos(crx)  : mz += -double(mov)*sin(crx) }
 	if (k_le == 1){ mx += -double(mov)*cos(crx) : mz += double(mov)*sin(crx) }
 
-	;モーションの起動、停止
-	if (k_up+k_dw+k_ri+k_le == 0){ anim(mynum) = 0 } else { anim(mynum) += 2*L_NUM }
+	;モーションの切り替え
+	if (k_up+k_dw+k_ri+k_le == 0){
+		if (m_blend > 0){ m_blend -= 2*L_NUM }
+		if (m_blend < 0){ m_blend = 0 }
+	} else {
+		if (m_blend < 1<<16){ m_blend += 2*L_NUM }
+		if (m_blend > 1<<16){ m_blend = 1<<16 }
+	}
+
+	fr_settrackweight C_man(mynum),0,(1<<16)-m_blend
+	fr_settrackweight C_man(mynum),1,m_blend
+
+	anim(mynum) += 2*L_NUM
 
 	return
 
@@ -251,10 +385,12 @@
 	mouse ginfo_winx/2,ginfo_winy/2
 
 	; カメラ設定
+	if (cry > M_PI/4){ cry = M_PI/4 }
+	if (cry < -M_PI/4){ cry = -M_PI/4 }
 	cam_y = y(mynum)+double(1<<16)*tan(cry)
 	if (cam_y < 0){ cam_y = 0 }
 	fr_setcampos x(mynum)+double(-2<<16)*sin(crx), cam_y, z(mynum)+double(-2<<16)*cos(crx)
-	ry(mynum) = rad2fr(crx) 
+	ry(mynum) = rad2fr(crx)+(1<<15)	;モデルの軸が前後ろ逆なので(1<<15)で半回転
 	fr_setcamtarget x(mynum), y(mynum), z(mynum)
 
 	return
@@ -277,7 +413,7 @@
 		;地面の色塗り替え
 		if (P_gcheck(6) == 0){
 			if (dr_flag(P_gcheck(7)/2) != T_color){
-				udpput "cmd"+str(P_gcheck(7)/2),sock
+				udpput "cmd"+str(T_color)+str(P_gcheck(7)/2),sock
 				D_point++
 			}
 			dr_flag(P_gcheck(7)/2) = T_color
@@ -333,6 +469,9 @@
 	if ((instr(D_str,0,"arg") == 0) & (strmid(D_str,3,1) != mynum)){ ry(strmid(D_str,3,1)) = strmid(D_str,4,16) }
 	if ((instr(D_str,0,"ani") == 0) & (strmid(D_str,3,1) != mynum)){ anim(strmid(D_str,3,1)) = strmid(D_str,4,16) }
 
+	if (instr(D_str,0,"cmd") == 0){ dr_flag(int(strmid(D_str,4,16))) = int(strmid(D_str,3,1)) }
+	
+
 	return
 
 
@@ -376,6 +515,7 @@
 		mes
 		mes D_point
 		mes
+		mes "ブレンド "+m_blend
 	gsel 0
 
 	return
