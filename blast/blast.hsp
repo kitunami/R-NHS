@@ -1,0 +1,236 @@
+	;適当に作ったのでソースコード汚いです by 澤井
+	#include "obaq.as"
+	#include "d3m.hsp"
+
+	#define max_power 10
+	#define c_size 20.0
+	home_dir = dir_cur
+
+	title "Blast v1.1"
+
+	picload "./date/pic1.png"
+
+	objsize 100,30 : pos 350,370
+	button goto "ゲームを始める",*menu
+	button goto "ステージを作る",*smaker
+
+	stop
+
+*smaker
+	exec "blast_maker.exe"
+	end
+
+*menu
+	cls
+	chdir home_dir+"/stage"
+	notesel stage_list
+	dirlist stage_list,"*.bsd",1
+
+	sdim stage_maker,64,100
+	sdim stage_name,64,100
+	sdim kstage_name,64,100
+
+	cou = 0 : dstage_list = ""
+	repeat
+		notesel stage_list
+		noteget stage_name(cou),cou
+		if (stage_name(cou) == ""){ break }
+		notesel lstage_date
+		noteload stage_name(cou)
+		repeat
+			noteget kstage_date,cnt
+			if (instr(kstage_date,0,"StageName") != -1){ kstage_name(cou) = strmid(kstage_date,instr(kstage_date,0,"=")+1,64) }
+			if (instr(kstage_date,0,"StageMaker") != -1){ stage_maker(cou) = strmid(kstage_date,instr(kstage_date,0,"=")+1,64) }
+			if (instr(kstage_date,0,"End") != -1){ break }
+		loop
+		notesel dstage_list
+		noteadd ""+kstage_name(cou)+" / "+stage_maker(cou)
+		cou++
+	loop
+	
+	objsize ginfo(12),ginfo(13)-130 : objmode 2 : font "",20
+	listbox select,,dstage_list
+	objsize ginfo(12),30
+	button goto "スタート",*start
+
+
+	stop
+
+*start
+	cls
+	qreset : qgravity 0,0 : qmat 0,3,0xffffff
+
+	notesel stage_date
+	noteload home_dir+"/stage/"+stage_name(select)
+	chdir home_dir
+
+	dim obj,1000 : dim objtype,1000
+	ddim objposx,1000 : ddim objposy,1000
+	ddim objsizex,1000 : ddim objsizey,1000
+	dim objshape,1000
+	repeat
+		noteget getdate,cnt
+		if (instr(getdate,0,"StartPositionX") != -1){ startposx = int(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"StartPositionY") != -1){ startposy = int(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"MaxCoin") != -1){ max_coin = int(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"MaxBlast") != -1){ b_max = int(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"TotalObj") != -1){ totalobj = int(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"ObjType") != -1){ objtype(int(strmid(getdate,instr(getdate,0,"(")+1,instr(getdate,0,")")-instr(getdate,0,"(")-1))) = int(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"ObjPosX") != -1){ objposx(int(strmid(getdate,instr(getdate,0,"(")+1,instr(getdate,0,")")-instr(getdate,0,"(")-1))) = double(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"ObjPosY") != -1){ objposy(int(strmid(getdate,instr(getdate,0,"(")+1,instr(getdate,0,")")-instr(getdate,0,"(")-1))) = double(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"ObjSizeX") != -1){ objsizex(int(strmid(getdate,instr(getdate,0,"(")+1,instr(getdate,0,")")-instr(getdate,0,"(")-1))) = double(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"ObjSizeY") != -1){ objsizey(int(strmid(getdate,instr(getdate,0,"(")+1,instr(getdate,0,")")-instr(getdate,0,"(")-1))) = double(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"ObjShape") != -1){ objshape(int(strmid(getdate,instr(getdate,0,"(")+1,instr(getdate,0,")")-instr(getdate,0,"(")-1))) = int(strmid(getdate,instr(getdate,0,"=")+1,64)) }
+		if (instr(getdate,0,"End") != -1){ break }
+	loop
+
+	qaddpoly myobj,36,startposx,startposy,0,5,5,0,1,2,6
+	qmat myobj,3,0x5599ff : qtype myobj,0x100
+	qdamper myobj,0,0 : qinertia myobj,0.997,1
+
+	repeat totalobj
+		qaddpoly obj(cnt),objshape(cnt),objposx(cnt),objposy(cnt),0,objsizex(cnt),objsizey(cnt),0,objtype(cnt)
+		switch objtype(cnt)
+			case 1
+				qmat obj(cnt),3,0xffffff
+			swbreak
+			case 2
+				qmat obj(cnt),3,0xffff00
+			swbreak
+			case 4
+				qmat obj(cnt),3,0xff0000
+			swbreak
+		swend
+		qtype obj(cnt),0x1c0
+	loop
+
+	mouse
+	mouse -1
+	pcou = 0.0
+	coin = 0 : b_rem = 0
+	f_break = 0
+
+	repeat
+		redraw 0
+			color 0,0,0 : boxf
+			qexec
+			qdraw 1
+			nmx = mousex : nmy = mousey
+			color 255,255,255
+			circle nmx-c_size,nmy-c_size,nmx+c_size,nmy+c_size,0
+		
+			if (f_break > 0){
+				pos 0,0 : color 255,255,255
+				mes 3-(cnt-f_break)/60
+			} else {
+				pos 0,0 : color 255,255,255
+				mes "ボタンを押してください"
+			}
+		redraw 1
+		if ((cnt-f_break > 180) & (f_break > 0)){ break }
+
+		stick key
+		if ((key != 0) & (f_break == 0)){ f_break = cnt }		
+		await 1000/60
+	loop
+
+	f_time = d3timer()
+
+	;メインループ
+	repeat
+		qgetspeed myobj,mxs,mys,mrs
+		if ((int(mxs*1000) == 0) & (int(mys*1000) == 0)){
+			if (coin >= max_coin){ goto *gameclear }
+			if (f_blast == 0){
+				f_blast = 1
+				b_rem++
+				if (b_rem > b_max){
+					goto *gameover
+				}
+			}
+		} else {
+			f_blast = 0
+		}
+
+		mkey = key
+		stick key,768
+		if (key == 768){ pcou = 0.0 : cansel = 1 }
+		if ((key == 256) & (f_blast == 1) & (cansel = 0)){
+			if (pcou == 0){ nmx = mousex : nmy = mousey }
+			qcnvaxis qmx,qmy,nmx,nmy,1
+			pcou += 0.1
+		} else {
+			if (pcou != 0){
+				qblast qmx,qmy,pcou\max_power
+				pcou = 0.0
+			}
+			nmx = mousex : nmy = mousey
+			if (((mkey&256) == 256) & ((key & 256) == 0)){ cansel = 0 }
+		}
+		if (key == 128){ qterm : goto *start }
+		cr_size = c_size*(double(pcou\max_power)/max_power)
+
+		;当たり判定
+		qcollision myobj,-1
+		repeat
+			qgetcol colid,colx,coly
+			if (colid == -1){
+				break
+			} else {
+				qgetgroup colid,group,exgroup,loggroup
+				if (group == 2){
+					qdel colid
+					if (f_coin == 0){ coin++ : f_coin = 1 }
+				}
+				if (group == 4){
+					goto *gameover
+				}
+			}
+		loop
+		f_coin = 0
+
+		n_time = d3timer()
+
+		redraw 0
+			color 0,0,0 : boxf : color 255,255,255
+			timer = str(double(n_time-f_time)/1000)
+			
+			pos 0,0 : mes "blast "+b_rem+"/"+b_max+"     coin "+coin+"/"+max_coin+"     time "+strmid(timer,0,instr(timer,0,".")+3)
+			circle nmx-c_size,nmy-c_size,nmx+c_size,nmy+c_size,0
+			color 200,200,200
+			circle nmx-cr_size,nmy-cr_size,nmx+cr_size,nmy+cr_size,1
+			qexec
+			qdraw 1
+		redraw 1
+
+		await 1000/60
+
+	loop
+
+
+*gameclear
+	mouse
+	dialog "ゲームクリア！\nほかのステージで遊びますか？",2
+	if (stat == 6){
+		cls : qterm
+		goto *menu
+	} else {
+		end
+	}
+	stop
+
+*gameover
+	mouse
+	dialog "ゲームオーバー！\nもう一度プレイしますか？",2
+	if (stat == 6){
+		cls : qterm
+		goto *start
+	} else {
+		dialog "ほかのステージで遊びますか？",2
+		if (stat == 6){
+			cls : qterm
+			goto *menu
+		} else {
+			end
+		}
+	}

@@ -207,7 +207,7 @@
 	repeat 4
 		model_name(cnt) = "man"
 	loop
-	model_name(mynum) = "bonnya"	;（仮）自分のモデルは「ぼんにゃ」としておく
+	model_name(mynum) = "testchan"
 
 	; 平行光源の作成
 	fr_addlight    0, D3DLIGHT_DIRECTIONAL
