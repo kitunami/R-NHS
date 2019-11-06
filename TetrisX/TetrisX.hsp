@@ -129,11 +129,17 @@
 	Port = 50000
 	dim SockID,MaxPlayer
 
+	dim Rate,MaxPlayer
+	sdim Name,16,MaxPlayer
+
 
 	/* タイトルとかいろいろ作る */
-	/*
+
 	objsize DX/20,DX/20 : font msgothic,DX/100
-	button goto "募集する",*hostwait
+	mes "シングルプレイ"
+	button goto "スタート",*serverwait
+	mes "マルチプレイ"
+	button goto "募集する",*serverwait
 	button goto "参加する",*clientset
 
 	stop
@@ -144,33 +150,42 @@
 
 
 
-*hostwait
+*serverwait
 	cls : objsize DX/20,DX/20 : font msgothic,DX/100
 	mes "待機中です..."
 	mes "あなたのIPアドレスは「"+MyIPAddress+"」です。"
-	//終了用button
+	NowPlayer = 0
+	udpsock SockID(0),Port
 
-*hostloop
-	//レシーブ
-		//データ返信
+*serverloop
+	udpcheck Packet,SockID(0)
+	repeat Packet
+		sdim Buf,64 : sdim Info,64
+		udpget Buf,64,SockID(0)
+		udpinfo Info,SockID(0)
+
+		
+	loop
 
 	await 1
-	goto *hostloop
+	goto *serverloop
+
+
 
 *clientset
 	cls : objsize DX/20,DX/20 : font msgothic,DX/100
 	mes "IPアドレスを入力してください。"
-	HostIPAddress = ""
-	input HostIPAddress,DX/10,DY/40
+	ServerIPAddress = ""
+	input ServerIPAddress,DX/10,DY/40
 	button goto "参加する",*clientwait
 	stop
 
 
 *clientwait
-	udpsock HostSockID,Port
-	udpsendto HostSockID,HostIPAddress,Port
+	udpsock ServerSockID,Port
+	udpsendto ServerSockID,ServerIPAddress,Port
 	udpput "ent"
-	stop*/
+	stop
 
 
 
@@ -241,7 +256,7 @@
 	gosub *downmino
 	gosub *keycheck
 
-	gosub *ghostcheck
+	gosub *gservercheck
 	gosub *draw
 
 	if (DebugMode == 1){ gosub *debug }
@@ -313,7 +328,7 @@
 	return
 
 
-*ghostcheck
+*gservercheck
 	Cou0 = 0
 	repeat 4
 		MapDate(DMinoX+MinoDate(0,Cou0,DMinoR,MinoT),DMinoY+MinoDate(1,Cou0,DMinoR,MinoT)) = -1

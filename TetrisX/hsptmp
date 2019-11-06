@@ -1,0 +1,753 @@
+
+	#include "pcbnet2.as"
+	netsilent	//ƒGƒ‰[‚ð•\Ž¦‚³‚¹‚È‚¢
+
+	//‰æ–Ê‚Í16:9‚ÉŒÅ’è
+	#define DX ginfo_dispx
+	#define DY ginfo_dispx*9/16
+
+	#define MinoSize DX/50
+	#define MinoDrawAreaX DX/10
+	#define MinoDrawAreaY DY/5
+	#define DateDrawAreaX MinoDrawAreaX+10*MinoSize+DX/50
+	#define DateDrawAreaY
+
+	#define MaxPlayer 8
+
+	#define DebugMode 1
+
+	#module
+		#deffunc SetMinoColor int p1
+			switch p1
+				case 0 : color 0,255,255 : swbreak
+				case 1 : color 255,255,0 : swbreak
+				case 2 : color 0,255,0 : swbreak
+				case 3 : color 255,128,0 : swbreak
+				case 4 : color 255,0,0 : swbreak
+				case 5 : color 0,0,255 : swbreak
+				case 6 : color 128,0,255 : swbreak
+				case -1 : color 0,0,0 : swbreak
+				case -2 : color 128,128,128 : swbreak
+				default : color 0,0,0 : swbreak
+			swend
+		return
+
+	#global
+
+	//ƒXƒNƒŠ[ƒ“ì¬
+	bgscr 0, ginfo_dispx, ginfo_dispy, 0, 0, 0
+	buffer 1, DX, DY
+	screen 100,DX/2,DY/2,screen_hide,DX/2,DY/4 : gsel 100,-1
+	gsel 0
+	
+	if (DebugMode == 1){
+		gsel 100,2 : gsel 0
+	}
+
+	randomize
+
+	//ƒ~ƒmƒf[ƒ^
+	dim MinoDate, 2,4,4,7
+	//‚hƒ~ƒm
+	MinoDate(0,0,0,0) =  0, 0 : MinoDate(0,1,0,0) = -1, 0 : MinoDate(0,2,0,0) =  1, 0 : MinoDate(0,3,0,0) =  2, 0
+	MinoDate(0,0,1,0) =  0, 0 : MinoDate(0,1,1,0) =  0,-1 : MinoDate(0,2,1,0) =  0, 1 : MinoDate(0,3,1,0) =  0, 2
+	MinoDate(0,0,2,0) =  0, 0 : MinoDate(0,1,2,0) =  1, 0 : MinoDate(0,2,2,0) = -1, 0 : MinoDate(0,3,2,0) = -2, 0
+	MinoDate(0,0,3,0) =  0, 0 : MinoDate(0,1,3,0) =  0,-1 : MinoDate(0,2,3,0) =  0,-2 : MinoDate(0,3,3,0) =  0, 1
+	//‚nƒ~ƒm
+	MinoDate(0,0,0,1) =  0, 0 : MinoDate(0,1,0,1) =  0, 1 : MinoDate(0,2,0,1) =  1, 1 : MinoDate(0,3,0,1) =  1, 0
+	MinoDate(0,0,1,1) =  0, 0 : MinoDate(0,1,1,1) = -1, 0 : MinoDate(0,2,1,1) = -1, 1 : MinoDate(0,3,1,1) =  0, 1
+	MinoDate(0,0,2,1) =  0, 0 : MinoDate(0,1,2,1) = -1, 0 : MinoDate(0,2,2,1) = -1,-1 : MinoDate(0,3,2,1) =  0,-1
+	MinoDate(0,0,3,1) =  0, 0 : MinoDate(0,1,3,1) =  1, 0 : MinoDate(0,2,3,1) =  0,-1 : MinoDate(0,3,3,1) =  1,-1
+	//‚rƒ~ƒm
+	MinoDate(0,0,0,2) =  0, 0 : MinoDate(0,1,0,2) =  0,-1 : MinoDate(0,2,0,2) =  1,-1 : MinoDate(0,3,0,2) = -1, 0
+	MinoDate(0,0,1,2) =  0, 0 : MinoDate(0,1,1,2) =  0,-1 : MinoDate(0,2,1,2) =  1, 0 : MinoDate(0,3,1,2) =  1, 1
+	MinoDate(0,0,2,2) =  0, 0 : MinoDate(0,1,2,2) =  1, 0 : MinoDate(0,2,2,2) = -1, 1 : MinoDate(0,3,2,2) =  0, 1
+	MinoDate(0,0,3,2) =  0, 0 : MinoDate(0,1,3,2) = -1,-1 : MinoDate(0,2,3,2) = -1, 0 : MinoDate(0,3,3,2) =  0, 1
+	//‚kƒ~ƒm
+	MinoDate(0,0,0,3) =  0, 0 : MinoDate(0,1,0,3) =  1,-1 : MinoDate(0,2,0,3) =  1, 0 : MinoDate(0,3,0,3) = -1, 0
+	MinoDate(0,0,1,3) =  0, 0 : MinoDate(0,1,1,3) =  0,-1 : MinoDate(0,2,1,3) =  0, 1 : MinoDate(0,3,1,3) =  1, 1
+	MinoDate(0,0,2,3) =  0, 0 : MinoDate(0,1,2,3) = -1, 0 : MinoDate(0,2,2,3) =  1, 0 : MinoDate(0,3,2,3) = -1, 1
+	MinoDate(0,0,3,3) =  0, 0 : MinoDate(0,1,3,3) = -1,-1 : MinoDate(0,2,3,3) =  0,-1 : MinoDate(0,3,3,3) =  0, 1
+	//‚yƒ~ƒm
+	MinoDate(0,0,0,4) =  0, 0 : MinoDate(0,1,0,4) = -1,-1 : MinoDate(0,2,0,4) =  0,-1 : MinoDate(0,3,0,4) =  1, 0
+	MinoDate(0,0,1,4) =  0, 0 : MinoDate(0,1,1,4) =  1,-1 : MinoDate(0,2,1,4) =  1, 0 : MinoDate(0,3,1,4) =  0, 1
+	MinoDate(0,0,2,4) =  0, 0 : MinoDate(0,1,2,4) = -1, 0 : MinoDate(0,2,2,4) =  0, 1 : MinoDate(0,3,2,4) =  1, 1
+	MinoDate(0,0,3,4) =  0, 0 : MinoDate(0,1,3,4) =  0,-1 : MinoDate(0,2,3,4) = -1, 0 : MinoDate(0,3,3,4) = -1, 1
+	//‚iƒ~ƒm
+	MinoDate(0,0,0,5) =  0, 0 : MinoDate(0,1,0,5) =  1, 0 : MinoDate(0,2,0,5) = -1, 0 : MinoDate(0,3,0,5) = -1,-1
+	MinoDate(0,0,1,5) =  0, 0 : MinoDate(0,1,1,5) =  0, 1 : MinoDate(0,2,1,5) =  0,-1 : MinoDate(0,3,1,5) =  1,-1
+	MinoDate(0,0,2,5) =  0, 0 : MinoDate(0,1,2,5) =  1, 1 : MinoDate(0,2,2,5) =  1, 0 : MinoDate(0,3,2,5) = -1, 0
+	MinoDate(0,0,3,5) =  0, 0 : MinoDate(0,1,3,5) =  0,-1 : MinoDate(0,2,3,5) =  0, 1 : MinoDate(0,3,3,5) = -1, 1
+	//‚sƒ~ƒm
+	MinoDate(0,0,0,6) =  0, 0 : MinoDate(0,1,0,6) = -1, 0 : MinoDate(0,2,0,6) =  1, 0 : MinoDate(0,3,0,6) =  0,-1
+	MinoDate(0,0,1,6) =  0, 0 : MinoDate(0,1,1,6) =  1, 0 : MinoDate(0,2,1,6) =  0, 1 : MinoDate(0,3,1,6) =  0,-1
+	MinoDate(0,0,2,6) =  0, 0 : MinoDate(0,1,2,6) =  1, 0 : MinoDate(0,2,2,6) = -1, 0 : MinoDate(0,3,2,6) =  0, 1
+	MinoDate(0,0,3,6) =  0, 0 : MinoDate(0,1,3,6) = -1, 0 : MinoDate(0,2,3,6) =  0, 1 : MinoDate(0,3,3,6) =  0,-1
+
+	//“ÁŽê‰ñ“]ƒf[ƒ^
+	dim MinoMoveDate, 2,6,8,7
+	//‚hƒ~ƒm
+	MinoMoveDate(0,0,0,0) =  0,-1 : MinoMoveDate(0,1,0,0) = -2,-1 : MinoMoveDate(0,2,0,0) =  1,-1 : MinoMoveDate(0,3,0,0) = -2,-2 : MinoMoveDate(0,4,0,0) =  1, 1 : MinoMoveDate(0,5,0,0) =  0,-1
+	MinoMoveDate(0,0,1,0) =  1, 0 : MinoMoveDate(0,1,1,0) = -1, 0 : MinoMoveDate(0,2,1,0) =  2, 0 : MinoMoveDate(0,3,1,0) =  2,-2 : MinoMoveDate(0,4,1,0) = -1, 1 : MinoMoveDate(0,5,1,0) =  1, 0
+	MinoMoveDate(0,0,2,0) =  0, 1 : MinoMoveDate(0,1,2,0) =  2, 1 : MinoMoveDate(0,2,2,0) = -1, 1 : MinoMoveDate(0,3,2,0) = -1,-1 : MinoMoveDate(0,4,2,0) =  2, 2 : MinoMoveDate(0,5,2,0) =  0, 1
+	MinoMoveDate(0,0,3,0) = -1, 0 : MinoMoveDate(0,1,3,0) =  1, 0 : MinoMoveDate(0,2,3,0) = -2, 0 : MinoMoveDate(0,3,3,0) =  1,-1 : MinoMoveDate(0,4,3,0) = -2, 1 : MinoMoveDate(0,5,3,0) = -1, 0
+	MinoMoveDate(0,0,4,0) = -1, 0 : MinoMoveDate(0,1,4,0) =  1, 0 : MinoMoveDate(0,2,4,0) = -2, 0 : MinoMoveDate(0,3,4,0) =  1,-1 : MinoMoveDate(0,4,4,0) = -1, 2 : MinoMoveDate(0,5,4,0) = -1, 0
+	MinoMoveDate(0,0,5,0) =  0,-1 : MinoMoveDate(0,1,5,0) = -2,-1 : MinoMoveDate(0,2,5,0) =  1,-1 : MinoMoveDate(0,3,5,0) = -2,-2 : MinoMoveDate(0,4,5,0) =  1, 0 : MinoMoveDate(0,5,5,0) =  0,-1
+	MinoMoveDate(0,0,6,0) =  1, 0 : MinoMoveDate(0,1,6,0) = -1, 0 : MinoMoveDate(0,2,6,0) =  2, 0 : MinoMoveDate(0,3,6,0) =  2,-2 : MinoMoveDate(0,4,6,0) = -1, 1 : MinoMoveDate(0,5,6,0) =  1, 0
+	MinoMoveDate(0,0,7,0) =  0, 1 : MinoMoveDate(0,1,7,0) = -1, 1 : MinoMoveDate(0,2,7,0) =  2, 1 : MinoMoveDate(0,3,7,0) = -1,-1 : MinoMoveDate(0,4,7,0) =  2, 2 : MinoMoveDate(0,5,7,0) =  0, 1
+	//‚nƒ~ƒm
+	MinoMoveDate(0,0,0,1) =  0,-1 : MinoMoveDate(0,1,0,1) =  0, 0 : MinoMoveDate(0,2,0,1) =  0, 0 : MinoMoveDate(0,3,0,1) =  0, 0 : MinoMoveDate(0,4,0,1) =  0, 0 : MinoMoveDate(0,5,0,1) =  0, 0
+	MinoMoveDate(0,0,1,1) =  1, 0 : MinoMoveDate(0,1,1,1) =  0, 0 : MinoMoveDate(0,2,1,1) =  0, 0 : MinoMoveDate(0,3,1,1) =  0, 0 : MinoMoveDate(0,4,1,1) =  0, 0 : MinoMoveDate(0,5,1,1) =  0, 0
+	MinoMoveDate(0,0,2,1) =  0, 1 : MinoMoveDate(0,1,2,1) =  0, 0 : MinoMoveDate(0,2,2,1) =  0, 0 : MinoMoveDate(0,3,2,1) =  0, 0 : MinoMoveDate(0,4,2,1) =  0, 0 : MinoMoveDate(0,5,2,1) =  0, 0
+	MinoMoveDate(0,0,3,1) = -1, 0 : MinoMoveDate(0,1,3,1) =  0, 0 : MinoMoveDate(0,2,3,1) =  0, 0 : MinoMoveDate(0,3,3,1) =  0, 0 : MinoMoveDate(0,4,3,1) =  0, 0 : MinoMoveDate(0,5,3,1) =  0, 0
+	MinoMoveDate(0,0,4,1) = -1, 0 : MinoMoveDate(0,1,4,1) =  0, 0 : MinoMoveDate(0,2,4,1) =  0, 0 : MinoMoveDate(0,3,4,1) =  0, 0 : MinoMoveDate(0,4,4,1) =  0, 0 : MinoMoveDate(0,5,4,1) =  0, 0
+	MinoMoveDate(0,0,5,1) =  0,-1 : MinoMoveDate(0,1,5,1) =  0, 0 : MinoMoveDate(0,2,5,1) =  0, 0 : MinoMoveDate(0,3,5,1) =  0, 0 : MinoMoveDate(0,4,5,1) =  0, 0 : MinoMoveDate(0,5,5,1) =  0, 0
+	MinoMoveDate(0,0,6,1) =  1, 0 : MinoMoveDate(0,1,6,1) =  0, 0 : MinoMoveDate(0,2,6,1) =  0, 0 : MinoMoveDate(0,3,6,1) =  0, 0 : MinoMoveDate(0,4,6,1) =  0, 0 : MinoMoveDate(0,5,6,1) =  0, 0
+	MinoMoveDate(0,0,7,1) =  0, 1 : MinoMoveDate(0,1,7,1) =  0, 0 : MinoMoveDate(0,2,7,1) =  0, 0 : MinoMoveDate(0,3,7,1) =  0, 0 : MinoMoveDate(0,4,7,1) =  0, 0 : MinoMoveDate(0,5,7,1) =  0, 0
+	//‚r‚kƒ~ƒm
+	MinoMoveDate(0,0,0,2) =  0, 0 : MinoMoveDate(0,1,0,2) = -1, 0 : MinoMoveDate(0,2,0,2) = -1, 1 : MinoMoveDate(0,3,0,2) =  0,-2 : MinoMoveDate(0,4,0,2) = -1,-2 : MinoMoveDate(0,5,0,2) =  0, 0
+	MinoMoveDate(0,0,1,2) =  0, 0 : MinoMoveDate(0,1,1,2) = -1, 0 : MinoMoveDate(0,2,1,2) = -1,-1 : MinoMoveDate(0,3,1,2) =  0, 2 : MinoMoveDate(0,4,1,2) = -1, 2 : MinoMoveDate(0,5,1,2) =  0, 0
+	MinoMoveDate(0,0,2,2) =  0, 0 : MinoMoveDate(0,1,2,2) =  1, 0 : MinoMoveDate(0,2,2,2) =  1, 1 : MinoMoveDate(0,3,2,2) =  0,-2 : MinoMoveDate(0,4,2,2) =  1,-2 : MinoMoveDate(0,5,2,2) =  0, 0
+	MinoMoveDate(0,0,3,2) =  0, 0 : MinoMoveDate(0,1,3,2) =  1, 0 : MinoMoveDate(0,2,3,2) =  1,-1 : MinoMoveDate(0,3,3,2) =  0, 2 : MinoMoveDate(0,4,3,2) =  1, 2 : MinoMoveDate(0,5,3,2) =  0, 0
+	MinoMoveDate(0,0,4,2) =  0, 0 : MinoMoveDate(0,1,4,2) =  1, 0 : MinoMoveDate(0,2,4,2) =  1, 1 : MinoMoveDate(0,3,4,2) =  0,-2 : MinoMoveDate(0,4,4,2) =  1,-2 : MinoMoveDate(0,5,4,2) =  0, 0
+	MinoMoveDate(0,0,5,2) =  0, 0 : MinoMoveDate(0,1,5,2) = -1, 0 : MinoMoveDate(0,2,5,2) = -1,-1 : MinoMoveDate(0,3,5,2) =  0, 2 : MinoMoveDate(0,4,5,2) = -1, 2 : MinoMoveDate(0,5,5,2) =  0, 0
+	MinoMoveDate(0,0,6,2) =  0, 0 : MinoMoveDate(0,1,6,2) = -1, 0 : MinoMoveDate(0,2,6,2) = -1, 1 : MinoMoveDate(0,3,6,2) =  0,-2 : MinoMoveDate(0,4,6,2) = -1,-2 : MinoMoveDate(0,5,6,2) =  0, 0
+	MinoMoveDate(0,0,7,2) =  0, 0 : MinoMoveDate(0,1,7,2) =  1, 0 : MinoMoveDate(0,2,7,2) =  1,-1 : MinoMoveDate(0,3,7,2) =  0, 2 : MinoMoveDate(0,4,7,2) =  1, 2 : MinoMoveDate(0,5,7,2) =  0, 0
+	//‚y‚i‚sƒ~ƒm
+	MinoMoveDate(0,0,0,3) =  0, 0 : MinoMoveDate(0,1,0,3) = -1, 0 : MinoMoveDate(0,2,0,3) = -1, 1 : MinoMoveDate(0,3,0,3) =  0,-2 : MinoMoveDate(0,4,0,3) = -1,-2 : MinoMoveDate(0,5,0,3) =  0, 0
+	MinoMoveDate(0,0,1,3) =  0, 0 : MinoMoveDate(0,1,1,3) = -1, 0 : MinoMoveDate(0,2,1,3) = -1,-1 : MinoMoveDate(0,3,1,3) =  0, 2 : MinoMoveDate(0,4,1,3) = -1, 2 : MinoMoveDate(0,5,1,3) =  0, 0
+	MinoMoveDate(0,0,2,3) =  0, 0 : MinoMoveDate(0,1,2,3) =  1, 0 : MinoMoveDate(0,2,2,3) =  1, 1 : MinoMoveDate(0,3,2,3) =  0,-2 : MinoMoveDate(0,4,2,3) =  1,-2 : MinoMoveDate(0,5,2,3) =  0, 0
+	MinoMoveDate(0,0,3,3) =  0, 0 : MinoMoveDate(0,1,3,3) =  1, 0 : MinoMoveDate(0,2,3,3) =  1,-1 : MinoMoveDate(0,3,3,3) =  0, 2 : MinoMoveDate(0,4,3,3) =  1, 2 : MinoMoveDate(0,5,3,3) =  0, 0
+	MinoMoveDate(0,0,4,3) =  0, 0 : MinoMoveDate(0,1,4,3) =  1, 0 : MinoMoveDate(0,2,4,3) =  1, 1 : MinoMoveDate(0,3,4,3) =  0,-2 : MinoMoveDate(0,4,4,3) =  1,-2 : MinoMoveDate(0,5,4,3) =  0, 0
+	MinoMoveDate(0,0,5,3) =  0, 0 : MinoMoveDate(0,1,5,3) = -1, 0 : MinoMoveDate(0,2,5,3) = -1,-1 : MinoMoveDate(0,3,5,3) =  0, 2 : MinoMoveDate(0,4,5,3) = -1, 2 : MinoMoveDate(0,5,5,3) =  0, 0
+	MinoMoveDate(0,0,6,3) =  0, 0 : MinoMoveDate(0,1,6,3) = -1, 0 : MinoMoveDate(0,2,6,3) = -1, 1 : MinoMoveDate(0,3,6,3) =  0,-2 : MinoMoveDate(0,4,6,3) = -1,-2 : MinoMoveDate(0,5,6,3) =  0, 0
+	MinoMoveDate(0,0,7,3) =  0, 0 : MinoMoveDate(0,1,7,3) =  1, 0 : MinoMoveDate(0,2,7,3) =  1,-1 : MinoMoveDate(0,3,7,3) =  0, 2 : MinoMoveDate(0,4,7,3) =  1, 2 : MinoMoveDate(0,5,7,3) =  0, 0
+
+	sdim IPAddress,32,MaxPlayer
+	MyIPAddress = ""
+	ownip MyIPAddress
+	Port = 50000
+	dim SockID,MaxPlayer
+
+	dim Rate,MaxPlayer
+	sdim Name,16,MaxPlayer
+
+
+	/* ƒ^ƒCƒgƒ‹‚Æ‚©‚¢‚ë‚¢‚ëì‚é */
+
+	objsize DX/20,DX/20 : font msgothic,DX/100
+	button goto "•åW‚·‚é",*serverwait
+	button goto "ŽQ‰Á‚·‚é",*clientset
+
+	stop
+
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+
+
+*serverwait
+	cls : objsize DX/20,DX/20 : font msgothic,DX/100
+	mes "‘Ò‹@’†‚Å‚·..."
+	mes "‚ ‚È‚½‚ÌIPƒAƒhƒŒƒX‚Íu"+MyIPAddress+"v‚Å‚·B"
+	NowPlayer = 0
+	udpsock SockID(0),Port
+
+*serverloop
+	udpcheck Packet,SockID(0)
+	repeat Packet
+	loop
+
+	await 1
+	goto *serverloop
+
+*clientset
+	cls : objsize DX/20,DX/20 : font msgothic,DX/100
+	mes "IPƒAƒhƒŒƒX‚ð“ü—Í‚µ‚Ä‚­‚¾‚³‚¢B"
+	ServerIPAddress = ""
+	input ServerIPAddress,DX/10,DY/40
+	button goto "ŽQ‰Á‚·‚é",*clientwait
+	stop
+
+
+*clientwait
+	udpsock ServerSockID,Port
+	udpsendto ServerSockID,ServerIPAddress,Port
+	udpput "ent"
+	stop
+
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+
+
+	//€”õ
+	RandomNumber = rnd(1000)
+
+	randomize RandomNumber
+	MapSizeX = 10 : MapSizeY = 61
+
+	dim MinoLine,7,2
+	repeat 7
+		MinoLine(cnt,0) = cnt
+		MinoLine(cnt,1) = cnt
+	loop
+	MinoCount = 0 : MinoLineCount = 0
+	gosub *shuffle
+	MinoR = 0
+	MinoX = 4 : MinoY = 40
+	MinoT = MinoLine(MinoCount,MinoLineCount)
+	MainCount = 0
+	DownCount = 0 : DownTime = 50
+	MarginCount = 0 : MarginTime = 100
+	MinoMoveFlag = 0
+	HoldMino = -1 : HoldFlag = 0
+	SoftDropSpeed = 20
+	ClearLine = 0
+	Ren = 0 : RenFlag = 0
+	SplitClear = 0	//0:‚È‚µ 1:11 2:12 3:21 
+	SplitClearFlag = 0 : Split1ClearFlag = 0 : Split2ClearFlag = 0
+	TspinFlag = 0 : TspinClear = 0
+	BacktobackFlag = 0 : BacktobackClear = 0
+	
+
+	KeyCodeMU = 38 : KeyCodeMD = 40
+	KeyCodeMR = 39 : KeyCodeML = 37
+	KeyCodeRR = 88 : KeyCodeRL = 90
+	KeyCodeH = 67 : KeyCodeS = 86
+	KeyChargeTime = 10
+
+	dim MapDate, MapSizeX,MapSizeY
+	Cou0 = 0
+	repeat MapSizeX
+		Cou1 = 0
+		repeat MapSizeY
+			MapDate(Cou0,Cou1) = -1
+			Cou1++
+		loop
+		Cou0++
+	loop
+
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+
+
+	BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+	DMinoX = MinoX : DMinoY = MinoY : DMinoR = MinoR
+	gosub *remmino
+	gosub *putmino
+
+*main	//ƒƒCƒ“ƒ‹[ƒv
+
+	gosub *downmino
+	gosub *keycheck
+
+	gosub *gservercheck
+	gosub *draw
+
+	if (DebugMode == 1){ gosub *debug }
+
+
+	MainCount++
+
+	await 1000/60	//FPS 60
+
+	goto *main
+
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+
+
+//ƒ~ƒm‚Ì~‰º
+*downmino
+	gosub *downcheck
+
+	//‚Ü‚¾—Ž‚Æ‚¹‚é‚©‚Ì•ªŠò
+	if (KMinoY != MinoY){
+		MarginCount = 0
+		DownCount++
+	} else {
+		DownCount = 0
+		MarginCount++
+	}
+
+	//ˆê’èŽžŠÔ‚Å‰º‚É—Ž‚Æ‚·
+	if (DownCount >= DownTime){
+		DownCount = 0
+		MinoY++
+		TspinFlag = 0
+	}
+
+	//ƒ~ƒm‚ð’u‚­
+	if (MarginCount >= MarginTime){
+		HoldFlag = 0
+		gosub *linecheck
+		gosub *bornmino
+		gosub *putcheck
+
+		//’u‚¯‚È‚¢‚È‚çƒQ[ƒ€ƒI[ƒo[
+		if (Result == 1){ gosub *gameover }
+	}
+
+
+	return
+
+
+//‚Ç‚±‚Ü‚Å—Ž‚Æ‚¹‚é‚©‚ÌŠm”F
+*downcheck
+	KMinoX = MinoX : KMinoY = MinoY
+
+	gosub *remmino
+	repeat
+		gosub *putcheck
+		if (Result == 1){ break }
+		KMinoY++
+	loop
+
+	KMinoY--
+
+	gosub *putmino
+	
+
+	return
+
+
+*gservercheck
+	Cou0 = 0
+	repeat 4
+		MapDate(DMinoX+MinoDate(0,Cou0,DMinoR,MinoT),DMinoY+MinoDate(1,Cou0,DMinoR,MinoT)) = -1
+		Cou0++
+	loop
+
+	gosub *downcheck
+
+	DMinoX = KMinoX : DMinoY = KMinoY : DMinoR = MinoR
+
+	Cou0 = 0
+	repeat 4
+		if (MapDate(DMinoX+MinoDate(0,Cou0,BMinoR,MinoT),DMinoY+MinoDate(1,Cou0,BMinoR,MinoT)) == -1){
+			MapDate(DMinoX+MinoDate(0,Cou0,BMinoR,MinoT),DMinoY+MinoDate(1,Cou0,BMinoR,MinoT)) = -2
+		}
+		Cou0++
+	loop	
+
+
+	return
+
+
+
+*bornmino
+	MinoCount++
+	if (MinoCount == 7){
+		gosub *shuffle
+		MinoLineCount = 1-MinoLineCount
+		MinoCount = 0
+	}
+	MinoT = MinoLine(MinoCount,MinoLineCount)
+	MinoR = 0
+	MinoX = 4 : MinoY = 40
+	DownCount = 0 : MarginCount = 0
+	TspinFlag = 0
+	KMinoX = MinoX : KMinoY = MinoY : KMinoR = MinoR
+	BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+	DMinoX = MinoX : DMinoY = MinoY : DMinoR = MinoR
+
+	return
+
+
+
+*remmino
+	Cou0 = 0
+	repeat 4
+		MapDate(BMinoX+MinoDate(0,Cou0,BMinoR,MinoT),BMinoY+MinoDate(1,Cou0,BMinoR,MinoT)) = -1
+		Cou0++
+	loop
+
+	return
+
+
+
+*putmino
+	Cou0 = 0
+	repeat 4
+		MapDate(MinoX+MinoDate(0,Cou0,MinoR,MinoT),MinoY+MinoDate(1,Cou0,MinoR,MinoT)) = MinoT
+		Cou0++
+	loop
+
+	BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+
+	return
+
+
+
+*draw
+	color 255,255,255 : boxf
+	Cou0 = 0
+	repeat 20
+		Cou1 = 0
+		repeat MapSizeX
+			SetMinoColor MapDate(Cou1,Cou0+MapSizeY-20)
+			boxf MinoDrawAreaX+Cou1*MinoSize,MinoDrawAreaY+Cou0*MinoSize,MinoDrawAreaX+Cou1*MinoSize+MinoSize,MinoDrawAreaY+Cou0*MinoSize+MinoSize
+			Cou1++
+		loop
+		Cou0++
+	loop
+
+	//ƒ}ƒX–Ú‚Ìü
+	color 64,64,64
+	repeat 19,1 : line MinoDrawAreaX,MinoDrawAreaY+cnt*MinoSize,MinoDrawAreaX+10*MinoSize,MinoDrawAreaY+cnt*MinoSize : loop
+	repeat 9,1 : line MinoDrawAreaX+cnt*MinoSize,MinoDrawAreaY,MinoDrawAreaX+cnt*MinoSize,MinoDrawAreaY+20*MinoSize : loop
+
+	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,DY/7 : mes "NEXT"
+	font msgothic, MinoSize
+	Cou0 = MinoCount
+	Cou1 = MinoLineCount
+	repeat 5
+		Cou0++
+		if (Cou0 == 7){ Cou0 = 0 : Cou1 = 1-Cou1 }
+
+		SetMinoColor MinoLine(Cou0,Cou1)
+		boxf DateDrawAreaX,DY/5+MinoSize*3*cnt,DateDrawAreaX+MinoSize*3,DY/5+MinoSize*3*cnt+MinoSize*3
+	loop
+
+	//ƒz[ƒ‹ƒhƒ~ƒm‚Ì•`ŽÊ
+	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,double(DY)/1.3 : mes "HOLD"
+	SetMinoColor HoldMino
+	boxf DateDrawAreaX,double(DY)/1.2,DateDrawAreaX+MinoSize*3,double(DY)/1.2+MinoSize*3
+
+	if (Ren > 0){ color 0,0,0 : font msgothic,DX/50 : pos DX/40,DY/3 : mes str(Ren)+"REN" }
+	if (BacktobackClear == 1){ color 0,0,0 : font msgothic,DX/80 : pos DX/100,double(DY)/2.1 : mes "Back to Back" }
+	if (ClearLine == 4){ color 0,0,0 : font msgothic,DX/60 : pos DX/40,DY/2 : mes "Tetris" }
+	if (TspinClear > 0){ color 0,0,0 : font msgothic,DX/70 : pos DX/70,DY/2 : mes "T-Spin" }
+	switch TspinClear
+		case 1
+			color 0,0,0 : font msgothic,DX/70 : pos DX/30,double(DY)/1.9 : mes "Single"
+		swbreak
+		case 2
+			color 0,0,0 : font msgothic,DX/70 : pos DX/30,double(DY)/1.9 : mes "Double"
+		swbreak
+		case 3
+			color 0,0,0 : font msgothic,DX/70 : pos DX/30,double(DY)/1.9 : mes "Triple"
+		swbreak
+	swend
+
+	gsel 0
+	redraw 0
+		color 0,0,0 : boxf : color 255,255,255
+		pos 0,(ginfo_dispy-DY)/2 : gcopy 1,0,0,DX,DY
+	redraw 1
+	gsel 1
+
+	return
+
+
+*keycheck
+	stick key
+	if (key == 128){ end }
+	
+	getkey KeyRR,KeyCodeRR
+	if (KeyRR == 1){
+		CKeyRR++
+		if (CKeyRR == 1){
+			KMinoR = MinoR
+			if (MinoR == 3){ MinoR = 0 } else { MinoR++ }
+			gosub *remmino
+			switch MinoT/2
+				case 0
+					if (MinoT == 0){
+						MinoMoveFlag = 0
+					} else {
+						MinoMoveFlag = 1
+					}
+				swbreak
+				case 1 : MinoMoveFlag = 2 : swbreak
+				case 2 : MinoMoveFlag = 3 : swbreak
+				case 3 : MinoMoveFlag = 3 : swbreak
+			swend
+			Cou1 = 0
+			repeat 5
+				KMinoX = MinoX+MinoMoveDate(0,Cou1,MinoR,MinoMoveFlag)
+				KMinoY = MinoY+MinoMoveDate(1,Cou1,MinoR,MinoMoveFlag)
+				gosub *putcheck
+				if (Result == 0){
+					MinoX = KMinoX : MinoY = KMinoY
+					break
+				}
+				Cou1++
+			loop
+			if (Result == 1){ MinoR = KMinoR }
+			gosub *tspincheck
+			gosub *putmino
+		}
+	} else {
+		CKeyRR = 0
+	}
+	getkey KeyRL,KeyCodeRL
+	if (KeyRL == 1){
+		CKeyRL++
+		if (CKeyRL == 1){
+			KMinoR = MinoR
+			if (MinoR == 0){ MinoR = 3 } else { MinoR-- }
+			gosub *remmino
+			switch MinoT/2
+				case 0
+					if (MinoT == 0){
+						MinoMoveFlag = 0
+					} else {
+						MinoMoveFlag = 1
+					}
+				swbreak
+				case 1 : MinoMoveFlag = 2 : swbreak
+				case 2 : MinoMoveFlag = 3 : swbreak
+				case 3 : MinoMoveFlag = 3 : swbreak
+			swend
+			Cou1 = 0
+			repeat 5
+				KMinoX = MinoX+MinoMoveDate(0,Cou1,MinoR+4,MinoMoveFlag)
+				KMinoY = MinoY+MinoMoveDate(1,Cou1,MinoR+4,MinoMoveFlag)
+				gosub *putcheck
+				if (Result == 0){
+					MinoX = KMinoX : MinoY = KMinoY
+					break
+				}
+				Cou1++
+			loop
+			if (Result == 1){ MinoR = KMinoR }
+			gosub *tspincheck
+			gosub *putmino
+		}
+	} else {
+		CKeyRL = 0
+	}
+
+	
+
+	getkey KeyMR,KeyCodeMR
+	if (KeyMR == 1){
+		CKeyMR++
+		if ((CKeyMR == 1) | (CKeyMR > KeyChargeTime)){
+			KMinoX = MinoX : KMinoY = MinoY
+			KMinoX++
+			gosub *remmino
+			gosub *putcheck
+			if (Result == 0){
+				MinoX = KMinoX
+				MarginCount = int(0.95*MarginCount)
+			}
+			gosub *putmino
+		}
+	} else {
+		CKeyMR = 0
+	}
+	getkey KeyML,KeyCodeML
+	if (KeyML == 1){
+		CKeyML++
+		if ((CKeyML == 1) | (CKeyML > KeyChargeTime)){
+			KMinoX = MinoX : KMinoY = MinoY
+			KMinoX--
+			gosub *remmino
+			gosub *putcheck
+			if (Result == 0){
+				MinoX = KMinoX
+				MarginCount = int(0.95*MarginCount)
+			}
+			gosub *putmino
+		}
+	} else {
+		CKeyML = 0
+	}
+	getkey KeyMD,KeyCodeMD
+	if (KeyMD == 1){
+		DownCount += SoftDropSpeed
+	}
+	getkey KeyMU,KeyCodeMU
+	if (KeyMU == 1){
+		CKeyMU++
+		if (CKeyMU == 1){
+			gosub *downcheck
+			MinoX = KMinoX : MinoY = KMinoY
+			MarginCount = MarginTime
+		}
+	} else {
+		CKeyMU = 0
+	}
+
+	getkey KeyH,KeyCodeH
+	if (KeyH == 1){
+		CKeyH++
+		if ((CKeyH == 1) & (HoldFlag == 0)){
+			HoldFlag = 1
+			if (HoldMino == -1){
+				gosub *remmino
+				HoldMino = MinoT
+				BMinoX = DMinoX : BMinoY = DMinoY : BMinoR = DMinoR
+				gosub *remmino
+				gosub *bornmino
+			} else {
+				gosub *remmino
+				BMinoX = DMinoX : BMinoY = DMinoY : BMinoR = DMinoR
+				gosub *remmino
+				KHoldMino = HoldMino
+				HoldMino = MinoT : MinoT = KHoldMino
+				MinoR = 0
+				MinoX = 4 : MinoY = 40
+				DownCount = 0 : MarginCount = 0
+				TspinFlag = 0
+				KMinoX = MinoX : KMinoY = MinoY : KMinoR = MinoR
+				BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+				DMinoX = MinoX : DMinoY = MinoY : DMinoR = MinoR
+			}
+		}
+	} else {
+		CKeyH = 0
+	}
+
+
+	return
+
+*linecheck
+	Cou0 = MapSizeY-1
+	SplitClear = 0
+	SplitClearFlag = 0 : Split1ClearFlag = 0 : Split2ClearFlag = 0
+	if (ClearLine > 0){ RenFlag = 1 } else { RenFlag = 0 }
+	ClearLine = 0
+	TspinClear = 0 : BacktobackClear = 0
+	repeat MapSizeY
+		LineClearFlag = 1
+		repeat MapSizeX
+			if (MapDate(cnt,Cou0) == -1){
+				LineClearFlag = 0
+				break
+			}
+		loop
+		if (LineClearFlag == 1){
+			Cou1 = Cou0 : ClearLine++
+			repeat Cou0-1
+				repeat MapSizeX
+					MapDate(cnt,Cou1) = MapDate(cnt,Cou1-1)
+				loop
+				Cou1--
+			loop
+			if (SplitClearFlag == 0){ Split1ClearFlag++ } else { Split2ClearFlag++ }
+			Cou0++
+		} else {
+			if ((SplitClearFlag == 0) & (Split1ClearFlag > 0)){
+				SplitClearFlag = 1
+			}
+		}
+		Cou0--
+	loop
+	if ((RenFlag == 1) & (ClearLine > 0)){
+		Ren++
+	} else {
+		Ren = 0
+	}
+	if ((Split1ClearFlag > 0) & (Split2ClearFlag > 0)){
+		switch Split1ClearFlag-Split2ClearFlag
+			case 0 : SplitClear = 1 : swbreak
+			case 1 : SplitClear = 2 : swbreak
+			case -1 : SplitClear = 3 : swbreak
+		swend
+	}
+	if (TspinFlag == 1){
+		switch ClearLine
+			case 1 : TspinClear = 1 : swbreak
+			case 2 : TspinClear = 2 : swbreak
+			case 3 : TspinClear = 3 : swbreak
+		swend
+	}
+	if ((ClearLine == 4) | (TspinClear > 0)){
+		if (BacktobackFlag == 1){ BacktobackClear = 1 }
+		BacktobackFlag = 1
+	} else {
+		if (ClearLine > 0){ BacktobackFlag = 0 }
+	}
+	
+
+
+	return
+
+
+*putcheck
+	Result = 0
+	Cou0 = 0
+	K1MinoX = KMinoX : K1MinoY = KMinoY
+	repeat 4
+		K1MinoX = KMinoX+MinoDate(0,Cou0,MinoR,MinoT)
+		K1MinoY = KMinoY+MinoDate(1,Cou0,MinoR,MinoT)
+		if ((K1MinoX >= MapSizeX) | (K1MinoY >= MapSizeY) | (K1MinoX < 0) | (K1MinoY <= 0)){ Result = 1 }
+		else { if (MapDate(K1MinoX,K1MinoY) >= 0){ Result = 1 } }
+		Cou0++
+	loop
+
+	return
+
+*tspincheck
+	if (MinoT == 6){
+		TspinFlag = 0
+		switch MinoX
+			case 0
+				if ((MapDate(1,MinoY-1) >= 0) | (MapDate(1,MinoY+1) >= 0)){ TspinFlag = 1 }
+			swbreak
+			case MapSizeX-1
+				if ((MapDate(MapSizeX-2,MinoY-1) >= 0) | (MapDate(MapSizeX-2,MinoY+1) >= 0)){ TspinFlag = 1 }
+			swbreak
+			default
+				if (MinoY == MapSizeY-1){
+					if ((MapDate(MinoX-1,MapSizeY-2) >= 0) | (MapDate(MinoX+1,MapSizeY-2) >= 0)){ TspinFlag = 1 }
+				} else {
+					Cou0 = 0
+					repeat 4
+						if (MapDate(MinoX+(cnt/2)*2-1,MinoY+(cnt\2)*2-1) >= 0){
+							Cou0++
+						}
+					loop
+					if (Cou0 >= 3){ TspinFlag = 1 }
+				}
+			swbreak
+		swend
+	}
+
+	return
+
+*shuffle
+	repeat 7
+		r = cnt + rnd(7 - cnt)
+		temp = MinoLine(r,MinoLineCount)
+		MinoLine(r,MinoLineCount) = MinoLine(cnt,MinoLineCount)
+		MinoLine(cnt,MinoLineCount) = temp
+	loop
+	return
+
+
+*gameover
+	dialog "Game Over"
+	end
+
+
+*debug
+	gsel 100 : cls
+
+	font msgothic,ginfo_dispy/50
+	mes MarginCount
+	mes DownCount
+	mes ClearLine
+	mes Ren
+	mes SplitClear
+	mes TspinClear
+	mes
+	mes BacktobackFlag
+	mes BacktobackClear
+
+	gsel 1
+
+	return
+
+
+
