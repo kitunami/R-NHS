@@ -1,0 +1,26 @@
+/*
+	mod_floatconvert.hsp
+	サンプルプログラム。
+
+	変換の基本。
+*/
+
+#include "mod_floatconvert.hsp"
+
+	f = 0
+	d = 0.0, 1.0, 0.12345678901234567, 1.1111111111111111
+
+	repeat 4
+		// 元の値。
+		mes strf( "double 型の値                  : %1.18f", d( cnt ) )
+
+		// float 型に変換。
+		f = dtof( d( cnt ) )
+		mes strf( "float 型に変換(メモリイメージ) : 0x%08X", f )
+
+		// float 型に変換したものを double 型に再変換。
+		// (表現精度の関係で元の double 型の値とは異なる場合があります。)
+		mes strf( "double 型の値に再変換          : %1.18f", ftod( f ) )
+		mes
+	loop
+	stop

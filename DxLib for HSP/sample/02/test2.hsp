@@ -1,0 +1,50 @@
+	#include "DxLib.as"
+	#include "cnvfloat.as"
+
+	#define WindowSizeX 800
+	#define WindowSizeY 600
+
+	ChangeWindowMode TRUE
+	SetUserWindow hwnd
+	SetUserWindowMessageProcessDXLibFlag FALSE
+	screen 0,WindowSizeX,WindowSizeY
+	SetUseFPUPreserveFlag TRUE
+	DxLib_Init
+	if stat : dialog "èâä˙âªÉGÉâÅ[" : end
+	SetDrawScreen DX_SCREEN_BACK
+	SetGraphMode WindowSizeX,WindowSizeY,16,1
+
+	mapfile="./2.mqo"
+	modelfile="./tdamiku/tdamiku.pmx"
+
+	MV1LoadModel mapfile
+	MapHandle = stat
+	MV1LoadModel modelfile
+	ModelHandle = stat
+	SetCameraNearFar tofloat(1.0),tofloat(1500.0)
+	repeat 10000
+		ClearDrawScreen 0
+		CamPos.0 = tofloat(x),tofloat(10.0),tofloat(y)
+		CamTar.0 = tofloat(x),tofloat(10.0),tofloat(y+12.0)
+		Target.0 = tofloat(0.0),tofloat(0.0),tofloat(0.0)
+		SetCameraPositionAndTarget_UpVecY CamPos(0),CamPos(1),CamPos(2),CamTar(0),CamTar(1),CamTar(2)
+		MV1SetPosition MapHandle,Target(0),Target(1),Target(2)
+		MV1DrawModel MapHandle
+		MV1SetPosition ModelHandle,CamTar(0),CamTar(1),CamTar(2)
+		MV1DrawModel ModelHandle
+		ScreenFlip
+
+		stick key,15
+		if key&1:x--
+		if key&2:y++
+		if key&4:x++
+		if key&8:y--
+
+		if key=128:break
+
+		title str(cnt)
+		await 17
+	loop
+
+	DxLib_End
+	end

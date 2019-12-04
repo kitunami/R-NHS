@@ -1,0 +1,99 @@
+/*
+	mod_floatconvert.hsp
+	サンプルプログラム。
+
+	float <-> double 変換器。
+*/
+
+#include "mod_floatconvert.hsp"
+
+	title "float 型と double 型の変換"
+
+	// 変数初期化。
+	f_val = 0
+	f_inp = 1.234	// 数値入力用。
+	f_bin = "0x3F800000"	// メモリイメージ入力用(16進数で数値を表現する文字列)
+	d_val = 0.0
+	d_inp = 5.678	// 数値入力用。
+	d_bin = "0x3FF0000000000000"	// メモリイメージ入力用(16進数で数値を表現する文字列)
+	sdim res, 1024
+	sdim tmp, 64
+
+	// 画面作成。
+	objmode 2
+	objsize 256, 24, 28
+	pos 0, 0
+	mes "float 型の値"
+	input f_inp
+	mes "float 型のメモリイメージ(32bit,16進数)"
+	input f_bin
+	mes "double 型の値"
+	input d_inp
+	mes "double 型のメモリイメージ(64bit,16進数)"
+	input d_bin
+
+	objsize 128, 24, 56
+	pos 320, 28
+	button gosub "変換", *cvt_fv
+	button gosub "変換", *cvt_fb
+	button gosub "変換", *cvt_dv
+	button gosub "変換", *cvt_db
+
+	pos 0, 240
+	objsize 640, 160, 28
+	mes "変換結果"
+	mesbox res, , , 0 : oid( 8 ) = stat
+	stop
+
+*cvt_fv
+	f_val = dtof( f_inp )
+	d_val = ftod( f_val )
+	gosub *update
+	return
+
+*cvt_fb
+	// 16進数で数値を表現する文字列を32ビット整数に変換。
+	tmp = strmid( f_bin, -1, 8 )
+	if ( ( strmid( tmp, 0, 1 ) != "$" ) && ( strmid( tmp, 0, 2 ) != "0x" ) && ( strmid( tmp, 0, 2 ) != "0X" ) ) {
+		tmp = "$" + tmp
+	}
+	lpoke f_val, 0, int( tmp )
+	d_val = ftod( f_val )
+	gosub *update
+	return
+
+*cvt_dv
+	d_val = d_inp
+	f_val = dtof( d_val )
+	gosub *update
+	return
+
+*cvt_db
+	// 16進数で数値を表現する文字列を64ビット整数に変換。
+	// 下位32ビット。
+	tmp = strmid( d_bin, -1, 8 )
+	if ( ( strmid( tmp, 0, 1 ) != "$" ) && ( strmid( tmp, 0, 2 ) != "0x" ) && ( strmid( tmp, 0, 2 ) != "0X" ) ) {
+		tmp = "$" + tmp
+	}
+	lpoke d_val, 0, int( tmp )
+	// 上位32ビット。
+	tmp = strmid( d_bin, 0, strlen( d_bin ) - 8 )
+	tmp = strmid( tmp, -1, 8 )
+	if ( ( strmid( tmp, 0, 1 ) != "$" ) && ( strmid( tmp, 0, 2 ) != "0x" ) && ( strmid( tmp, 0, 2 ) != "0X" ) ) {
+		tmp = "$" + tmp
+	}
+	lpoke d_val, 4, int( tmp )
+	f_val = dtof( d_val )
+	gosub *update
+	return
+
+*update
+	// 結果を更新。
+	res = ""
+	res += strf( "float 型の値\n%1.18e\n", ftod( f_val ) )
+	res += strf( "float 型のメモリイメージ\n0x%08X\n", f_val )
+	res += strf( "double 型の値\n%1.18e\n", d_val )
+	res += strf( "double 型のメモリイメージ\n0x%08X", lpeek( d_val, 4 ) ) + strf( "%08X", lpeek( d_val, 0 ) )
+	objprm oid( 8 ), res
+	return
+	

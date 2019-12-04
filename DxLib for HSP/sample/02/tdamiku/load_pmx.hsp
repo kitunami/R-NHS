@@ -1,0 +1,65 @@
+
+	#uselib "Dxlib.dll"
+
+	#module
+	#defcfunc tofloat double p1
+		temp = p1
+	return lpeek(temp)>>29&7|(p1<0)<<31|lpeek(temp,4)-(p1!0)*0x38000000<<3
+	#global
+
+	#const DX_SCREEN_FRONT		0xfffffffc
+	#const DX_SCREEN_BACK		0xfffffffe
+	
+	#cfunc DxLib_Init "dx_DxLib_Init"
+	#func DxLib_End "dx_DxLib_End"
+	
+	#func ChangeWindowMode "dx_ChangeWindowMode" int
+	#func SetUserWindow "dx_SetUserWindow" int
+	#func SetUserWindowMessageProcessDXLibFlag "dx_SetUserWindowMessageProcessDXLibFlag" int
+	#func SetUseFPUPreserveFlag "dx_SetUseFPUPreserveFlag" int
+	#func SetDrawScreen "dx_SetDrawScreen" int,int
+	#func SetGraphMode "dx_SetGraphMode" int,int,int,int
+	
+	#func ClearDrawScreen "dx_ClearDrawScreen" int
+	#func ScreenFlip "dx_ScreenFlip"
+	#func MV1LoadModel "dx_MV1LoadModel" var
+	#func MV1DrawModel "dx_MV1DrawModel" int
+	#func MV1SetPosition "dx_MV1SetPosition" int,int,int,int
+	#func MV1SetRotationXYZ "dx_MV1SetRotationXYZ" int,int,int,int 
+
+	#func MV1AttachAnim "dx_MV1AttachAnim" int,int,int,int
+	#func MV1SetAttachAnimTime "dx_MV1SetAttachAnimTime" int,int,int
+	#func SetCameraNearFar "dx_SetCameraNearFar" int,int
+	#func SetCameraPositionAndTarget_UpVecY "dx_SetCameraPositionAndTarget_UpVecY" int,int,int,int,int,int
+	
+	ChangeWindowMode 1//dxライブラリウインドウモードon
+	SetUserWindow hwnd// dxライブラリで描画するウィンドウを変更 
+	SetUserWindowMessageProcessDXLibFlag FALSE
+	screen 0,800,600//ウインドウ画面はHSP側で変更する
+	SetUseFPUPreserveFlag 1
+	if ( DxLib_Init() == -1 ) : dialog "初期化エラー" : end // エラーが起きたら終了
+	// 描画先画面を裏画面にする
+	SetDrawScreen DX_SCREEN_BACK
+	SetGraphMode 800,600,16,1//描画範囲設定
+	pmxfile="サーバルちゃんver1.01/サーバルちゃんver1.01.pmx"
+	MV1LoadModel pmxfile
+	ModelHandle = stat
+	MV1AttachAnim ModelHandle,0,-1,0
+	Anim=0.0
+	SetCameraNearFar tofloat(1.0),tofloat(150.0)
+	repeat 10000
+		ClearDrawScreen // 画面をクリアする
+		CamPos.0 = tofloat(0.0),tofloat(0.0),tofloat(0.0)
+		CamTar.0 = tofloat(0.0),tofloat(0.0),tofloat(12.0)
+		Target.0 = tofloat(0.0),tofloat(-15.0),tofloat(12.0)
+		TargetRot.0 = tofloat(0.0),tofloat(double(cnt)/100),tofloat(0.0)
+		SetCameraPositionAndTarget_UpVecY CamPos.0,CamPos.1,CamPos.2,CamTar.0,CamTar.1,CamTar.2
+		MV1SetPosition ModelHandle,Target.0,Target.1,Target.2
+		MV1SetRotationXYZ ModelHandle,TargetRot.0,TargetRot.1,TargetRot.2
+		MV1SetAttachAnimTime ModelHandle,0, tofloat(Anim)
+		Anim=Anim+0.5
+		MV1DrawModel ModelHandle
+		ScreenFlip
+		await 17
+	loop
+	DxLib_End

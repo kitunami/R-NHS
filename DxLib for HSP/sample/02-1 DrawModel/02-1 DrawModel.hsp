@@ -1,0 +1,45 @@
+	#include "DxLib.as"
+	#include "mod_floatconvert.hsp"
+
+	#define WindowSizeX 800
+	#define WindowSizeY 600
+
+	ChangeWindowMode TRUE
+	SetUserWindow hwnd
+	SetUserWindowMessageProcessDXLibFlag FALSE
+	screen 0,WindowSizeX,WindowSizeY
+	SetUseFPUPreserveFlag TRUE
+	DxLib_Init
+	if stat : dialog "初期化エラー" : end
+	SetDrawScreen DX_SCREEN_BACK
+	SetGraphMode WindowSizeX,WindowSizeY,16,1
+
+	//モデルのパス名
+	modelfile="./tdamiku/tdamiku.pmx"
+
+	MV1LoadModel modelfile	;モデル読み込み
+	ModelHandle = stat	;モデルハンドル取得
+	SetCameraNearFar dtof(1.0),dtof(1500.0)	;カメラの描写距離の設定
+	repeat 10000
+		ClearDrawScreen 0	;画面の初期化
+		//カメラの位置や方向の設定
+		CamPos.0 = dtof(0.0),dtof(10.0),dtof(-20.0)
+		CamTar.0 = dtof(0.0),dtof(10.0),dtof(-8.0)
+		Target.0 = dtof(0.0),dtof(0.0),dtof(0.0)
+		//設定を更新
+		SetCameraPositionAndTarget_UpVecY CamPos(0),CamPos(1),CamPos(2),CamTar(0),CamTar(1),CamTar(2)
+		MV1DrawModel ModelHandle	;モデルの描写
+		ScreenFlip	;画面反転（redrawみたいなやつ）
+
+		if key=128:break	;escキーで終了
+
+		await 1
+	loop
+
+	DxLib_End
+	end
+
+/*解説
+	３Ｄモデルを描写するプログラムです。
+	dtof関数でdouble型からfloat型に変換しています。
+*/

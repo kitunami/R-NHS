@@ -1,5 +1,6 @@
 
 	#include "pcbnet2.as"
+	#include "d3m.hsp"
 	netsilent	//エラーを表示させない
 
 	//画面は16:9に固定
@@ -11,6 +12,10 @@
 	#define MinoDrawAreaY DY/5
 	#define DateDrawAreaX MinoDrawAreaX+10*MinoSize+DX/50
 	#define DateDrawAreaY
+	#define StartMinoX 4
+	#define StartMinoY 39
+
+	#define BUF_MINO 1	//ミノ画像用バッファ
 
 	#define MaxPlayer 8
 
@@ -36,7 +41,10 @@
 
 	//スクリーン作成
 	bgscr 0, ginfo_dispx, ginfo_dispy, 0, 0, 0
-	buffer 1, DX, DY
+	buffer 1
+		celload "./skin/default/mino.png",BUF_MINO,0 : celdiv BUF_MINO,16,16,0,0
+		gmode 1
+	//デバッグ用
 	screen 100,DX/2,DY/2,screen_hide,DX/2,DY/4 : gsel 100,-1
 	gsel 0
 	
@@ -123,19 +131,33 @@
 	MinoMoveDate(0,0,6,3) =  0, 0 : MinoMoveDate(0,1,6,3) = -1, 0 : MinoMoveDate(0,2,6,3) = -1, 1 : MinoMoveDate(0,3,6,3) =  0,-2 : MinoMoveDate(0,4,6,3) = -1,-2 : MinoMoveDate(0,5,6,3) =  0, 0
 	MinoMoveDate(0,0,7,3) =  0, 0 : MinoMoveDate(0,1,7,3) =  1, 0 : MinoMoveDate(0,2,7,3) =  1,-1 : MinoMoveDate(0,3,7,3) =  0, 2 : MinoMoveDate(0,4,7,3) =  1, 2 : MinoMoveDate(0,5,7,3) =  0, 0
 
+	dim RenTable,15
+	RenTable(0) = 0,0,1,1,2,2,3,3,4,4,4,5,5,5,5
+
+	dim AttackTable,5
+	AttackTable(0) = 0,0,1,2,4
+
 	sdim IPAddress,32,MaxPlayer
 	MyIPAddress = ""
 	ownip MyIPAddress
 	Port = 50000
 	dim SockID,MaxPlayer
+	MaxNameLength = 16
 
 	dim Rate,MaxPlayer
-	sdim Name,16,MaxPlayer
+	sdim Name,MaxNameLength,MaxPlayer
 
 
 	/* タイトルとかいろいろ作る */
 
-	objsize DX/20,DX/20 : font msgothic,DX/100
+
+	objsize DX/10,DY/50
+	font msgothic,DX/100
+	mes "名前" : input Name(0),,,MaxNameLength
+	objsize DX/20,DX/20
+	mes "シングルプレイ"
+	button goto "スタート",*single
+	mes "マルチプレイ"
 	button goto "募集する",*serverwait
 	button goto "参加する",*clientset
 
@@ -151,16 +173,33 @@
 	cls : objsize DX/20,DX/20 : font msgothic,DX/100
 	mes "待機中です..."
 	mes "あなたのIPアドレスは「"+MyIPAddress+"」です。"
-	NowPlayer = 0
+	NowPlayer = 1
 	udpsock SockID(0),Port
 
 *serverloop
 	udpcheck Packet,SockID(0)
 	repeat Packet
+		sdim Buf,64 : sdim Info,64
+		udpget Buf,64,SockID(0)
+		udpinfo Info,SockID(0)
+
+		if (instr(Buf,0,"nam0") == 0){
+			Name(NowPlayer) = strmid(Buf,4,MaxNameLength)
+			udpsock SockID(NowPlayer),Port+NowPlayer
+			udpsendto SockID(NowPlayer),strmid(Info,0,instr(Info,0,":")),Port
+			repeat NowPlayer-1,1
+				udpput "nam"+NowPlayer+Name(NowPlayer),SockID(cnt)
+				udpput "sci"+NowPlayer+SockID(NowPlayer),SockID(cnt)
+			loop
+			udpput "num"+NowPlayer,SockID(NowPlayer)
+			NowPlayer++
+		}
 	loop
 
 	await 1
 	goto *serverloop
+
+
 
 *clientset
 	cls : objsize DX/20,DX/20 : font msgothic,DX/100
@@ -174,20 +213,40 @@
 *clientwait
 	udpsock ServerSockID,Port
 	udpsendto ServerSockID,ServerIPAddress,Port
-	udpput "ent"
+	udpput "nam0"+Name(0)
 	stop
 
+*clientloop
+	udpcheck Packet,SockID(0)
+	repeat Packet
+		sdim Buf,64 : sdim Info,64
+		udpget Buf,64,SockID(0)
+		udpinfo Info,SockID(0)
+
+		if (instr(Buf,0,"num") == 0){
+			Mynum = int(strmid(Buf,3,1))
+			Name(Mynum) = Name(0)
+			SockID(Mynum) = SockID(0)
+		}
+	loop
+
+	await 1
+	goto *clientloop
 
 
 //==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
 
-
-
-	//準備
+*single
 	RandomNumber = rnd(1000)
+
+*start
+	cls
+	//準備
 
 	randomize RandomNumber
 	MapSizeX = 10 : MapSizeY = 61
+
+	FTime = d3timer()
 
 	dim MinoLine,7,2
 	repeat 7
@@ -197,7 +256,7 @@
 	MinoCount = 0 : MinoLineCount = 0
 	gosub *shuffle
 	MinoR = 0
-	MinoX = 4 : MinoY = 40
+	MinoX = StartMinoX : MinoY = StartMinoY
 	MinoT = MinoLine(MinoCount,MinoLineCount)
 	MainCount = 0
 	DownCount = 0 : DownTime = 50
@@ -211,6 +270,10 @@
 	SplitClearFlag = 0 : Split1ClearFlag = 0 : Split2ClearFlag = 0
 	TspinFlag = 0 : TspinClear = 0
 	BacktobackFlag = 0 : BacktobackClear = 0
+	NowTime = 0
+	SumAttack = 0
+	SumDamage = 0 : DamageMarginSTime = 0 : DamageMargin = 1000
+	dim Damage,100 : DamageCount = 0
 	
 
 	KeyCodeMU = 38 : KeyCodeMD = 40
@@ -247,7 +310,10 @@
 	gosub *keycheck
 
 	gosub *gservercheck
+	gosub *timecheck
 	gosub *draw
+
+	gosub *recv
 
 	if (DebugMode == 1){ gosub *debug }
 
@@ -288,8 +354,16 @@
 	if (MarginCount >= MarginTime){
 		HoldFlag = 0
 		gosub *linecheck
+		PerfectClear = 0 : PerfectClearFlag = 1
+		repeat MapSizeX
+			if (MapDate(cnt,MapSizeY-1) != -1){
+				PerfectClearFlag = 0
+			}
+		loop
+		if (PerfectClearFlag == 1){ PerfectClear = 1 }
 		gosub *bornmino
 		gosub *putcheck
+		gosub *attackprocess
 
 		//置けないならゲームオーバー
 		if (Result == 1){ gosub *gameover }
@@ -335,7 +409,14 @@
 			MapDate(DMinoX+MinoDate(0,Cou0,BMinoR,MinoT),DMinoY+MinoDate(1,Cou0,BMinoR,MinoT)) = -2
 		}
 		Cou0++
-	loop	
+	loop
+
+	return
+
+
+
+*timecheck
+	NowTime = d3timer()-FTime
 
 
 	return
@@ -351,7 +432,7 @@
 	}
 	MinoT = MinoLine(MinoCount,MinoLineCount)
 	MinoR = 0
-	MinoX = 4 : MinoY = 40
+	MinoX = StartMinoX : MinoY = StartMinoY
 	DownCount = 0 : MarginCount = 0
 	TspinFlag = 0
 	KMinoX = MinoX : KMinoY = MinoY : KMinoR = MinoR
@@ -387,6 +468,7 @@
 
 
 *draw
+	redraw 0
 	color 255,255,255 : boxf
 	Cou0 = 0
 	repeat 20
@@ -394,6 +476,17 @@
 		repeat MapSizeX
 			SetMinoColor MapDate(Cou1,Cou0+MapSizeY-20)
 			boxf MinoDrawAreaX+Cou1*MinoSize,MinoDrawAreaY+Cou0*MinoSize,MinoDrawAreaX+Cou1*MinoSize+MinoSize,MinoDrawAreaY+Cou0*MinoSize+MinoSize
+
+			/*
+			pos MinoDrawAreaX+Cou1*MinoSize,MinoDrawAreaY+Cou0*MinoSize
+			if (MapDate(Cou1,Cou0+MapSizeY-20) >= 0){
+				celput BUF_MINO,MapDate(Cou1,Cou0+MapSizeY-20),double(MinoSize)/15.6,double(MinoSize)/15.6
+			} else {
+				SetMinoColor MapDate(Cou1,Cou0+MapSizeY-20)
+				boxf MinoDrawAreaX+Cou1*MinoSize,MinoDrawAreaY+Cou0*MinoSize,MinoDrawAreaX+Cou1*MinoSize+MinoSize,MinoDrawAreaY+Cou0*MinoSize+MinoSize
+			}
+			*/
+
 			Cou1++
 		loop
 		Cou0++
@@ -404,6 +497,7 @@
 	repeat 19,1 : line MinoDrawAreaX,MinoDrawAreaY+cnt*MinoSize,MinoDrawAreaX+10*MinoSize,MinoDrawAreaY+cnt*MinoSize : loop
 	repeat 9,1 : line MinoDrawAreaX+cnt*MinoSize,MinoDrawAreaY,MinoDrawAreaX+cnt*MinoSize,MinoDrawAreaY+20*MinoSize : loop
 
+	//ネクストミノの描写
 	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,DY/7 : mes "NEXT"
 	font msgothic, MinoSize
 	Cou0 = MinoCount
@@ -412,14 +506,16 @@
 		Cou0++
 		if (Cou0 == 7){ Cou0 = 0 : Cou1 = 1-Cou1 }
 
-		SetMinoColor MinoLine(Cou0,Cou1)
-		boxf DateDrawAreaX,DY/5+MinoSize*3*cnt,DateDrawAreaX+MinoSize*3,DY/5+MinoSize*3*cnt+MinoSize*3
+		pos DateDrawAreaX,DY/5+MinoSize*3*cnt
+		celput BUF_MINO,MinoLine(Cou0,Cou1)+7,double(MinoSize)*3/16,double(MinoSize)*3/16
 	loop
 
 	//ホールドミノの描写
 	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,double(DY)/1.3 : mes "HOLD"
-	SetMinoColor HoldMino
-	boxf DateDrawAreaX,double(DY)/1.2,DateDrawAreaX+MinoSize*3,double(DY)/1.2+MinoSize*3
+	pos DateDrawAreaX,double(DY)/1.2
+	if (HoldMino != -1){
+		celput BUF_MINO,HoldMino+7,double(MinoSize)*3/16,double(MinoSize)*3/16
+	}
 
 	if (Ren > 0){ color 0,0,0 : font msgothic,DX/50 : pos DX/40,DY/3 : mes str(Ren)+"REN" }
 	if (BacktobackClear == 1){ color 0,0,0 : font msgothic,DX/80 : pos DX/100,double(DY)/2.1 : mes "Back to Back" }
@@ -437,14 +533,110 @@
 		swbreak
 	swend
 
-	gsel 0
-	redraw 0
-		color 0,0,0 : boxf : color 255,255,255
-		pos 0,(ginfo_dispy-DY)/2 : gcopy 1,0,0,DX,DY
+	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,double(DY)/10 : mes str(int((NowTime/1000)/60))+" : "+strf("%02d",int((NowTime/1000)\60))
+	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX+DX/10,double(DY)/10 : mes "APM : "+str(Apm)
+	//color 0,0,0 : font msgothic,DX/80 : pos 0,0 : mes "FPS "+d3getfps()
+
 	redraw 1
-	gsel 1
+
 
 	return
+
+
+*attackprocess
+	Attack = 0
+	Attack += AttackTable(ClearLine)
+	if (Ren < 15){ Attack += RenTable(Ren) } else { Attack += RenTable(14) }
+	switch TspinClear
+		case 1
+			Attack += 2
+		swbreak
+		case 2
+			Attack += 3
+		swbreak
+		case 3
+			Attack += 4
+		swbreak
+	swend
+	if (PerfectClear == 1){ Attack += 10 }
+	if (BacktobackClear == 1){ Attack++ }
+
+	SumAttack += Attack
+	if (NowTime/1000 == 0){
+		Apm = SumAttack
+	} else {
+		Apm = int(double(SumAttack)*60/(NowTime/1000))
+	}
+
+	return
+
+
+
+*recv
+	getkey testkey,'1'
+	if testkey=1{
+		aa++
+	} else {
+		aa = 0
+	}
+	if (aa == 1){
+		SumDamage += (DamageCount+1)*2
+		Damage(DamageCount) = (DamageCount+1)*2
+		DamageCount++
+	}
+
+	if ((SumDamage > 0) & (DamageMarginSTime == 0)){ DamageMarginSTime = d3timer() }
+	if ((d3timer()-DamageMarginSTime > DamageMargin) & (DamageMarginSTime != 0)){
+		gosub *remmino
+		MinoY -= SumDamage
+		KMinoX = MinoX : KMinoY = MinoY
+		repeat
+			gosub *putcheck
+			if (Result == 1){ break }
+			KMinoY++
+		loop
+		KMinoY--
+		DMinoX = KMinoX : DMinoY = KMinoY : DMinoR = MinoR
+		Cou0 = 0
+		repeat 4
+			MapDate(DMinoX+MinoDate(0,Cou0,DMinoR,MinoT),DMinoY+MinoDate(1,Cou0,DMinoR,MinoT)) = -1
+			Cou0++
+		loop
+		repeat SumDamage
+			Cou1 = 0
+			repeat MapSizeY-1
+				repeat MapSizeX
+					MapDate(cnt,Cou1) = MapDate(cnt,Cou1+1)
+				loop
+				Cou1++
+			loop
+		loop
+
+		Cou0 = DamageCount-1 : Cou1 = MapSizeY-1
+		repeat
+			Hole = rnd(MapSizeX)
+			repeat Damage(Cou0)
+				repeat MapSizeX
+					if (cnt != Hole){ MapDate(cnt,Cou1) = 0 } else { MapDate(cnt,Cou1) = -1 }
+				loop
+				Cou1--
+			loop
+			Cou0--
+			if (Cou0 == -1){ break }
+		loop
+
+		dim Damage,100
+		SumDamage = 0
+		DamageMarginSTime = 0
+		DamageCount = 0
+
+		BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+		gosub *downcheck
+		DMinoX = KMinoX : DMinoY = KMinoY : DMinoR = MinoR
+	}
+
+	return
+
 
 
 *keycheck
@@ -596,7 +788,7 @@
 				KHoldMino = HoldMino
 				HoldMino = MinoT : MinoT = KHoldMino
 				MinoR = 0
-				MinoX = 4 : MinoY = 40
+				MinoX = StartMinoX : MinoY = StartMinoY
 				DownCount = 0 : MarginCount = 0
 				TspinFlag = 0
 				KMinoX = MinoX : KMinoY = MinoY : KMinoR = MinoR
@@ -737,15 +929,17 @@
 	font msgothic,ginfo_dispy/50
 	mes MarginCount
 	mes DownCount
-	mes ClearLine
-	mes Ren
-	mes SplitClear
-	mes TspinClear
+	mes "ClearLine : "+ClearLine
+	mes "Ren : "+Ren
 	mes
-	mes BacktobackFlag
-	mes BacktobackClear
+	mes "Attack : "+Attack
+	mes "SumAttack : "+SumAttack
+	mes "FPS : "+d3getfps()
+	mes "SumDamage : "+SumDamage
+	if (DamageMarginSTime != 0) : mes d3timer()-DamageMarginSTime
+	mes DamageCount
 
-	gsel 1
+	gsel 0
 
 	return
 

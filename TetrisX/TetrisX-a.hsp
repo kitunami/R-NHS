@@ -1,0 +1,930 @@
+
+	#include "pcbnet2.as"
+	#include "d3m.hsp"
+	netsilent	//エラーを表示させない
+
+	//画面は16:9に固定
+	#define DX ginfo_dispx
+	#define DY ginfo_dispx*9/16
+
+	#define MinoSize DX/50
+	#define MinoDrawAreaX DX/10
+	#define MinoDrawAreaY DY/5
+	#define DateDrawAreaX MinoDrawAreaX+10*MinoSize+DX/50
+	#define DateDrawAreaY
+	#define StartMinoX 4
+	#define StartMinoY 39
+
+	#define MaxPlayer 8
+
+	#define DebugMode 1
+
+	#module
+		#deffunc SetMinoColor int p1
+			switch p1
+				case 0 : color 0,255,255 : swbreak
+				case 1 : color 255,255,0 : swbreak
+				case 2 : color 0,255,0 : swbreak
+				case 3 : color 255,128,0 : swbreak
+				case 4 : color 255,0,0 : swbreak
+				case 5 : color 0,0,255 : swbreak
+				case 6 : color 128,0,255 : swbreak
+				case -1 : color 0,0,0 : swbreak
+				case -2 : color 128,128,128 : swbreak
+				default : color 0,0,0 : swbreak
+			swend
+		return
+
+	#global
+
+	//スクリーン作成
+	bgscr 0, ginfo_dispx, ginfo_dispy, 0, 0, 0
+	screen 100,DX/2,DY/2,screen_hide,DX/2,DY/4 : gsel 100,-1
+	gsel 0
+	
+	if (DebugMode == 1){
+		gsel 100,2 : gsel 0
+	}
+
+	randomize
+
+	//ミノデータ
+	dim MinoDate, 2,4,4,7
+	//Ｉミノ
+	MinoDate(0,0,0,0) =  0, 0 : MinoDate(0,1,0,0) = -1, 0 : MinoDate(0,2,0,0) =  1, 0 : MinoDate(0,3,0,0) =  2, 0
+	MinoDate(0,0,1,0) =  0, 0 : MinoDate(0,1,1,0) =  0,-1 : MinoDate(0,2,1,0) =  0, 1 : MinoDate(0,3,1,0) =  0, 2
+	MinoDate(0,0,2,0) =  0, 0 : MinoDate(0,1,2,0) =  1, 0 : MinoDate(0,2,2,0) = -1, 0 : MinoDate(0,3,2,0) = -2, 0
+	MinoDate(0,0,3,0) =  0, 0 : MinoDate(0,1,3,0) =  0,-1 : MinoDate(0,2,3,0) =  0,-2 : MinoDate(0,3,3,0) =  0, 1
+	//Ｏミノ
+	MinoDate(0,0,0,1) =  0, 0 : MinoDate(0,1,0,1) =  0, 1 : MinoDate(0,2,0,1) =  1, 1 : MinoDate(0,3,0,1) =  1, 0
+	MinoDate(0,0,1,1) =  0, 0 : MinoDate(0,1,1,1) = -1, 0 : MinoDate(0,2,1,1) = -1, 1 : MinoDate(0,3,1,1) =  0, 1
+	MinoDate(0,0,2,1) =  0, 0 : MinoDate(0,1,2,1) = -1, 0 : MinoDate(0,2,2,1) = -1,-1 : MinoDate(0,3,2,1) =  0,-1
+	MinoDate(0,0,3,1) =  0, 0 : MinoDate(0,1,3,1) =  1, 0 : MinoDate(0,2,3,1) =  0,-1 : MinoDate(0,3,3,1) =  1,-1
+	//Ｓミノ
+	MinoDate(0,0,0,2) =  0, 0 : MinoDate(0,1,0,2) =  0,-1 : MinoDate(0,2,0,2) =  1,-1 : MinoDate(0,3,0,2) = -1, 0
+	MinoDate(0,0,1,2) =  0, 0 : MinoDate(0,1,1,2) =  0,-1 : MinoDate(0,2,1,2) =  1, 0 : MinoDate(0,3,1,2) =  1, 1
+	MinoDate(0,0,2,2) =  0, 0 : MinoDate(0,1,2,2) =  1, 0 : MinoDate(0,2,2,2) = -1, 1 : MinoDate(0,3,2,2) =  0, 1
+	MinoDate(0,0,3,2) =  0, 0 : MinoDate(0,1,3,2) = -1,-1 : MinoDate(0,2,3,2) = -1, 0 : MinoDate(0,3,3,2) =  0, 1
+	//Ｌミノ
+	MinoDate(0,0,0,3) =  0, 0 : MinoDate(0,1,0,3) =  1,-1 : MinoDate(0,2,0,3) =  1, 0 : MinoDate(0,3,0,3) = -1, 0
+	MinoDate(0,0,1,3) =  0, 0 : MinoDate(0,1,1,3) =  0,-1 : MinoDate(0,2,1,3) =  0, 1 : MinoDate(0,3,1,3) =  1, 1
+	MinoDate(0,0,2,3) =  0, 0 : MinoDate(0,1,2,3) = -1, 0 : MinoDate(0,2,2,3) =  1, 0 : MinoDate(0,3,2,3) = -1, 1
+	MinoDate(0,0,3,3) =  0, 0 : MinoDate(0,1,3,3) = -1,-1 : MinoDate(0,2,3,3) =  0,-1 : MinoDate(0,3,3,3) =  0, 1
+	//Ｚミノ
+	MinoDate(0,0,0,4) =  0, 0 : MinoDate(0,1,0,4) = -1,-1 : MinoDate(0,2,0,4) =  0,-1 : MinoDate(0,3,0,4) =  1, 0
+	MinoDate(0,0,1,4) =  0, 0 : MinoDate(0,1,1,4) =  1,-1 : MinoDate(0,2,1,4) =  1, 0 : MinoDate(0,3,1,4) =  0, 1
+	MinoDate(0,0,2,4) =  0, 0 : MinoDate(0,1,2,4) = -1, 0 : MinoDate(0,2,2,4) =  0, 1 : MinoDate(0,3,2,4) =  1, 1
+	MinoDate(0,0,3,4) =  0, 0 : MinoDate(0,1,3,4) =  0,-1 : MinoDate(0,2,3,4) = -1, 0 : MinoDate(0,3,3,4) = -1, 1
+	//Ｊミノ
+	MinoDate(0,0,0,5) =  0, 0 : MinoDate(0,1,0,5) =  1, 0 : MinoDate(0,2,0,5) = -1, 0 : MinoDate(0,3,0,5) = -1,-1
+	MinoDate(0,0,1,5) =  0, 0 : MinoDate(0,1,1,5) =  0, 1 : MinoDate(0,2,1,5) =  0,-1 : MinoDate(0,3,1,5) =  1,-1
+	MinoDate(0,0,2,5) =  0, 0 : MinoDate(0,1,2,5) =  1, 1 : MinoDate(0,2,2,5) =  1, 0 : MinoDate(0,3,2,5) = -1, 0
+	MinoDate(0,0,3,5) =  0, 0 : MinoDate(0,1,3,5) =  0,-1 : MinoDate(0,2,3,5) =  0, 1 : MinoDate(0,3,3,5) = -1, 1
+	//Ｔミノ
+	MinoDate(0,0,0,6) =  0, 0 : MinoDate(0,1,0,6) = -1, 0 : MinoDate(0,2,0,6) =  1, 0 : MinoDate(0,3,0,6) =  0,-1
+	MinoDate(0,0,1,6) =  0, 0 : MinoDate(0,1,1,6) =  1, 0 : MinoDate(0,2,1,6) =  0, 1 : MinoDate(0,3,1,6) =  0,-1
+	MinoDate(0,0,2,6) =  0, 0 : MinoDate(0,1,2,6) =  1, 0 : MinoDate(0,2,2,6) = -1, 0 : MinoDate(0,3,2,6) =  0, 1
+	MinoDate(0,0,3,6) =  0, 0 : MinoDate(0,1,3,6) = -1, 0 : MinoDate(0,2,3,6) =  0, 1 : MinoDate(0,3,3,6) =  0,-1
+
+	//特殊回転データ
+	dim MinoMoveDate, 2,6,8,7
+	//Ｉミノ
+	MinoMoveDate(0,0,0,0) =  0,-1 : MinoMoveDate(0,1,0,0) = -2,-1 : MinoMoveDate(0,2,0,0) =  1,-1 : MinoMoveDate(0,3,0,0) = -2,-2 : MinoMoveDate(0,4,0,0) =  1, 1 : MinoMoveDate(0,5,0,0) =  0,-1
+	MinoMoveDate(0,0,1,0) =  1, 0 : MinoMoveDate(0,1,1,0) = -1, 0 : MinoMoveDate(0,2,1,0) =  2, 0 : MinoMoveDate(0,3,1,0) =  2,-2 : MinoMoveDate(0,4,1,0) = -1, 1 : MinoMoveDate(0,5,1,0) =  1, 0
+	MinoMoveDate(0,0,2,0) =  0, 1 : MinoMoveDate(0,1,2,0) =  2, 1 : MinoMoveDate(0,2,2,0) = -1, 1 : MinoMoveDate(0,3,2,0) = -1,-1 : MinoMoveDate(0,4,2,0) =  2, 2 : MinoMoveDate(0,5,2,0) =  0, 1
+	MinoMoveDate(0,0,3,0) = -1, 0 : MinoMoveDate(0,1,3,0) =  1, 0 : MinoMoveDate(0,2,3,0) = -2, 0 : MinoMoveDate(0,3,3,0) =  1,-1 : MinoMoveDate(0,4,3,0) = -2, 1 : MinoMoveDate(0,5,3,0) = -1, 0
+	MinoMoveDate(0,0,4,0) = -1, 0 : MinoMoveDate(0,1,4,0) =  1, 0 : MinoMoveDate(0,2,4,0) = -2, 0 : MinoMoveDate(0,3,4,0) =  1,-1 : MinoMoveDate(0,4,4,0) = -1, 2 : MinoMoveDate(0,5,4,0) = -1, 0
+	MinoMoveDate(0,0,5,0) =  0,-1 : MinoMoveDate(0,1,5,0) = -2,-1 : MinoMoveDate(0,2,5,0) =  1,-1 : MinoMoveDate(0,3,5,0) = -2,-2 : MinoMoveDate(0,4,5,0) =  1, 0 : MinoMoveDate(0,5,5,0) =  0,-1
+	MinoMoveDate(0,0,6,0) =  1, 0 : MinoMoveDate(0,1,6,0) = -1, 0 : MinoMoveDate(0,2,6,0) =  2, 0 : MinoMoveDate(0,3,6,0) =  2,-2 : MinoMoveDate(0,4,6,0) = -1, 1 : MinoMoveDate(0,5,6,0) =  1, 0
+	MinoMoveDate(0,0,7,0) =  0, 1 : MinoMoveDate(0,1,7,0) = -1, 1 : MinoMoveDate(0,2,7,0) =  2, 1 : MinoMoveDate(0,3,7,0) = -1,-1 : MinoMoveDate(0,4,7,0) =  2, 2 : MinoMoveDate(0,5,7,0) =  0, 1
+	//Ｏミノ
+	MinoMoveDate(0,0,0,1) =  0,-1 : MinoMoveDate(0,1,0,1) =  0, 0 : MinoMoveDate(0,2,0,1) =  0, 0 : MinoMoveDate(0,3,0,1) =  0, 0 : MinoMoveDate(0,4,0,1) =  0, 0 : MinoMoveDate(0,5,0,1) =  0, 0
+	MinoMoveDate(0,0,1,1) =  1, 0 : MinoMoveDate(0,1,1,1) =  0, 0 : MinoMoveDate(0,2,1,1) =  0, 0 : MinoMoveDate(0,3,1,1) =  0, 0 : MinoMoveDate(0,4,1,1) =  0, 0 : MinoMoveDate(0,5,1,1) =  0, 0
+	MinoMoveDate(0,0,2,1) =  0, 1 : MinoMoveDate(0,1,2,1) =  0, 0 : MinoMoveDate(0,2,2,1) =  0, 0 : MinoMoveDate(0,3,2,1) =  0, 0 : MinoMoveDate(0,4,2,1) =  0, 0 : MinoMoveDate(0,5,2,1) =  0, 0
+	MinoMoveDate(0,0,3,1) = -1, 0 : MinoMoveDate(0,1,3,1) =  0, 0 : MinoMoveDate(0,2,3,1) =  0, 0 : MinoMoveDate(0,3,3,1) =  0, 0 : MinoMoveDate(0,4,3,1) =  0, 0 : MinoMoveDate(0,5,3,1) =  0, 0
+	MinoMoveDate(0,0,4,1) = -1, 0 : MinoMoveDate(0,1,4,1) =  0, 0 : MinoMoveDate(0,2,4,1) =  0, 0 : MinoMoveDate(0,3,4,1) =  0, 0 : MinoMoveDate(0,4,4,1) =  0, 0 : MinoMoveDate(0,5,4,1) =  0, 0
+	MinoMoveDate(0,0,5,1) =  0,-1 : MinoMoveDate(0,1,5,1) =  0, 0 : MinoMoveDate(0,2,5,1) =  0, 0 : MinoMoveDate(0,3,5,1) =  0, 0 : MinoMoveDate(0,4,5,1) =  0, 0 : MinoMoveDate(0,5,5,1) =  0, 0
+	MinoMoveDate(0,0,6,1) =  1, 0 : MinoMoveDate(0,1,6,1) =  0, 0 : MinoMoveDate(0,2,6,1) =  0, 0 : MinoMoveDate(0,3,6,1) =  0, 0 : MinoMoveDate(0,4,6,1) =  0, 0 : MinoMoveDate(0,5,6,1) =  0, 0
+	MinoMoveDate(0,0,7,1) =  0, 1 : MinoMoveDate(0,1,7,1) =  0, 0 : MinoMoveDate(0,2,7,1) =  0, 0 : MinoMoveDate(0,3,7,1) =  0, 0 : MinoMoveDate(0,4,7,1) =  0, 0 : MinoMoveDate(0,5,7,1) =  0, 0
+	//ＳＬミノ
+	MinoMoveDate(0,0,0,2) =  0, 0 : MinoMoveDate(0,1,0,2) = -1, 0 : MinoMoveDate(0,2,0,2) = -1, 1 : MinoMoveDate(0,3,0,2) =  0,-2 : MinoMoveDate(0,4,0,2) = -1,-2 : MinoMoveDate(0,5,0,2) =  0, 0
+	MinoMoveDate(0,0,1,2) =  0, 0 : MinoMoveDate(0,1,1,2) = -1, 0 : MinoMoveDate(0,2,1,2) = -1,-1 : MinoMoveDate(0,3,1,2) =  0, 2 : MinoMoveDate(0,4,1,2) = -1, 2 : MinoMoveDate(0,5,1,2) =  0, 0
+	MinoMoveDate(0,0,2,2) =  0, 0 : MinoMoveDate(0,1,2,2) =  1, 0 : MinoMoveDate(0,2,2,2) =  1, 1 : MinoMoveDate(0,3,2,2) =  0,-2 : MinoMoveDate(0,4,2,2) =  1,-2 : MinoMoveDate(0,5,2,2) =  0, 0
+	MinoMoveDate(0,0,3,2) =  0, 0 : MinoMoveDate(0,1,3,2) =  1, 0 : MinoMoveDate(0,2,3,2) =  1,-1 : MinoMoveDate(0,3,3,2) =  0, 2 : MinoMoveDate(0,4,3,2) =  1, 2 : MinoMoveDate(0,5,3,2) =  0, 0
+	MinoMoveDate(0,0,4,2) =  0, 0 : MinoMoveDate(0,1,4,2) =  1, 0 : MinoMoveDate(0,2,4,2) =  1, 1 : MinoMoveDate(0,3,4,2) =  0,-2 : MinoMoveDate(0,4,4,2) =  1,-2 : MinoMoveDate(0,5,4,2) =  0, 0
+	MinoMoveDate(0,0,5,2) =  0, 0 : MinoMoveDate(0,1,5,2) = -1, 0 : MinoMoveDate(0,2,5,2) = -1,-1 : MinoMoveDate(0,3,5,2) =  0, 2 : MinoMoveDate(0,4,5,2) = -1, 2 : MinoMoveDate(0,5,5,2) =  0, 0
+	MinoMoveDate(0,0,6,2) =  0, 0 : MinoMoveDate(0,1,6,2) = -1, 0 : MinoMoveDate(0,2,6,2) = -1, 1 : MinoMoveDate(0,3,6,2) =  0,-2 : MinoMoveDate(0,4,6,2) = -1,-2 : MinoMoveDate(0,5,6,2) =  0, 0
+	MinoMoveDate(0,0,7,2) =  0, 0 : MinoMoveDate(0,1,7,2) =  1, 0 : MinoMoveDate(0,2,7,2) =  1,-1 : MinoMoveDate(0,3,7,2) =  0, 2 : MinoMoveDate(0,4,7,2) =  1, 2 : MinoMoveDate(0,5,7,2) =  0, 0
+	//ＺＪＴミノ
+	MinoMoveDate(0,0,0,3) =  0, 0 : MinoMoveDate(0,1,0,3) = -1, 0 : MinoMoveDate(0,2,0,3) = -1, 1 : MinoMoveDate(0,3,0,3) =  0,-2 : MinoMoveDate(0,4,0,3) = -1,-2 : MinoMoveDate(0,5,0,3) =  0, 0
+	MinoMoveDate(0,0,1,3) =  0, 0 : MinoMoveDate(0,1,1,3) = -1, 0 : MinoMoveDate(0,2,1,3) = -1,-1 : MinoMoveDate(0,3,1,3) =  0, 2 : MinoMoveDate(0,4,1,3) = -1, 2 : MinoMoveDate(0,5,1,3) =  0, 0
+	MinoMoveDate(0,0,2,3) =  0, 0 : MinoMoveDate(0,1,2,3) =  1, 0 : MinoMoveDate(0,2,2,3) =  1, 1 : MinoMoveDate(0,3,2,3) =  0,-2 : MinoMoveDate(0,4,2,3) =  1,-2 : MinoMoveDate(0,5,2,3) =  0, 0
+	MinoMoveDate(0,0,3,3) =  0, 0 : MinoMoveDate(0,1,3,3) =  1, 0 : MinoMoveDate(0,2,3,3) =  1,-1 : MinoMoveDate(0,3,3,3) =  0, 2 : MinoMoveDate(0,4,3,3) =  1, 2 : MinoMoveDate(0,5,3,3) =  0, 0
+	MinoMoveDate(0,0,4,3) =  0, 0 : MinoMoveDate(0,1,4,3) =  1, 0 : MinoMoveDate(0,2,4,3) =  1, 1 : MinoMoveDate(0,3,4,3) =  0,-2 : MinoMoveDate(0,4,4,3) =  1,-2 : MinoMoveDate(0,5,4,3) =  0, 0
+	MinoMoveDate(0,0,5,3) =  0, 0 : MinoMoveDate(0,1,5,3) = -1, 0 : MinoMoveDate(0,2,5,3) = -1,-1 : MinoMoveDate(0,3,5,3) =  0, 2 : MinoMoveDate(0,4,5,3) = -1, 2 : MinoMoveDate(0,5,5,3) =  0, 0
+	MinoMoveDate(0,0,6,3) =  0, 0 : MinoMoveDate(0,1,6,3) = -1, 0 : MinoMoveDate(0,2,6,3) = -1, 1 : MinoMoveDate(0,3,6,3) =  0,-2 : MinoMoveDate(0,4,6,3) = -1,-2 : MinoMoveDate(0,5,6,3) =  0, 0
+	MinoMoveDate(0,0,7,3) =  0, 0 : MinoMoveDate(0,1,7,3) =  1, 0 : MinoMoveDate(0,2,7,3) =  1,-1 : MinoMoveDate(0,3,7,3) =  0, 2 : MinoMoveDate(0,4,7,3) =  1, 2 : MinoMoveDate(0,5,7,3) =  0, 0
+
+	dim RenTable,15
+	RenTable(0) = 0,0,1,1,2,2,3,3,4,4,4,5,5,5,5
+
+	dim AttackTable,5
+	AttackTable(0) = 0,0,1,2,4
+
+	sdim IPAddress,32,MaxPlayer
+	MyIPAddress = ""
+	ownip MyIPAddress
+	Port = 50000
+	dim SockID,MaxPlayer
+	MaxNameLength = 16
+
+	dim Rate,MaxPlayer
+	sdim Name,MaxNameLength,MaxPlayer
+
+
+	/* タイトルとかいろいろ作る */
+
+
+	objsize DX/10,DY/50
+	font msgothic,DX/100
+	mes "名前" : input Name(0),,,MaxNameLength
+	objsize DX/20,DX/20
+	mes "シングルプレイ"
+	button goto "スタート",*single
+	mes "マルチプレイ"
+	button goto "募集する",*serverwait
+	button goto "参加する",*clientset
+
+	stop
+
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+
+
+*serverwait
+	cls : objsize DX/20,DX/20 : font msgothic,DX/100
+	mes "待機中です..."
+	mes "あなたのIPアドレスは「"+MyIPAddress+"」です。"
+	NowPlayer = 1
+	udpsock SockID(0),Port
+
+*serverloop
+	udpcheck Packet,SockID(0)
+	repeat Packet
+		sdim Buf,64 : sdim Info,64
+		udpget Buf,64,SockID(0)
+		udpinfo Info,SockID(0)
+
+		if (instr(Buf,0,"nam0") == 0){
+			Name(NowPlayer) = strmid(Buf,4,MaxNameLength)
+			udpsock SockID(NowPlayer),Port+NowPlayer
+			udpsendto SockID(NowPlayer),strmid(Info,0,instr(Info,0,":")),Port
+			repeat NowPlayer-1,1
+				udpput "nam"+NowPlayer+Name(NowPlayer),SockID(cnt)
+				udpput "sci"+NowPlayer+SockID(NowPlayer),SockID(cnt)
+			loop
+			udpput "num"+NowPlayer,SockID(NowPlayer)
+			NowPlayer++
+		}
+	loop
+
+	await 1
+	goto *serverloop
+
+
+
+*clientset
+	cls : objsize DX/20,DX/20 : font msgothic,DX/100
+	mes "IPアドレスを入力してください。"
+	ServerIPAddress = ""
+	input ServerIPAddress,DX/10,DY/40
+	button goto "参加する",*clientwait
+	stop
+
+
+*clientwait
+	udpsock ServerSockID,Port
+	udpsendto ServerSockID,ServerIPAddress,Port
+	udpput "nam0"+Name(0)
+	stop
+
+*clientloop
+	udpcheck Packet,SockID(0)
+	repeat Packet
+		sdim Buf,64 : sdim Info,64
+		udpget Buf,64,SockID(0)
+		udpinfo Info,SockID(0)
+
+		if (instr(Buf,0,"num") == 0){
+			Mynum = int(strmid(Buf,3,1))
+			Name(Mynum) = Name(0)
+			SockID(Mynum) = SockID(0)
+		}
+	loop
+
+	await 1
+	goto *clientloop
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+*single
+	RandomNumber = rnd(1000)
+
+*start
+	cls
+	//準備
+
+	randomize RandomNumber
+	MapSizeX = 10 : MapSizeY = 61
+
+	FTime = d3timer()
+
+	dim MinoLine,7,2
+	repeat 7
+		MinoLine(cnt,0) = cnt
+		MinoLine(cnt,1) = cnt
+	loop
+	MinoCount = 0 : MinoLineCount = 0
+	gosub *shuffle
+	MinoR = 0
+	MinoX = StartMinoX : MinoY = StartMinoY
+	MinoT = MinoLine(MinoCount,MinoLineCount)
+	MainCount = 0
+	DownCount = 0 : DownTime = 50
+	MarginCount = 0 : MarginTime = 100
+	MinoMoveFlag = 0
+	HoldMino = -1 : HoldFlag = 0
+	SoftDropSpeed = 20
+	ClearLine = 0
+	Ren = 0 : RenFlag = 0
+	SplitClear = 0	//0:なし 1:11 2:12 3:21 
+	SplitClearFlag = 0 : Split1ClearFlag = 0 : Split2ClearFlag = 0
+	TspinFlag = 0 : TspinClear = 0
+	BacktobackFlag = 0 : BacktobackClear = 0
+	NowTime = 0
+	SumAttack = 0
+	SumDamage = 0 : DamageMarginSTime = 0 : DamageMargin = 1000
+	dim Damage,100 : DamageCount = 0
+	
+
+	KeyCodeMU = 38 : KeyCodeMD = 40
+	KeyCodeMR = 39 : KeyCodeML = 37
+	KeyCodeRR = 88 : KeyCodeRL = 90
+	KeyCodeH = 67 : KeyCodeS = 86
+	KeyChargeTime = 10
+
+	dim MapDate, MapSizeX,MapSizeY
+	Cou0 = 0
+	repeat MapSizeX
+		Cou1 = 0
+		repeat MapSizeY
+			MapDate(Cou0,Cou1) = -1
+			Cou1++
+		loop
+		Cou0++
+	loop
+
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+
+
+	BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+	DMinoX = MinoX : DMinoY = MinoY : DMinoR = MinoR
+	gosub *remmino
+	gosub *putmino
+
+*main	//メインループ
+
+	gosub *downmino
+	gosub *keycheck
+
+	gosub *gservercheck
+	gosub *timecheck
+	gosub *draw
+
+	gosub *recv
+
+	if (DebugMode == 1){ gosub *debug }
+
+
+	MainCount++
+
+	await 1000/60	//FPS 60
+
+	goto *main
+
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+
+
+//ミノの降下
+*downmino
+	gosub *downcheck
+
+	//まだ落とせるかの分岐
+	if (KMinoY != MinoY){
+		MarginCount = 0
+		DownCount++
+	} else {
+		DownCount = 0
+		MarginCount++
+	}
+
+	//一定時間で下に落とす
+	if (DownCount >= DownTime){
+		DownCount = 0
+		MinoY++
+		TspinFlag = 0
+	}
+
+	//ミノを置く
+	if (MarginCount >= MarginTime){
+		HoldFlag = 0
+		gosub *linecheck
+		PerfectClear = 0 : PerfectClearFlag = 1
+		repeat MapSizeX
+			if (MapDate(cnt,MapSizeY-1) != -1){
+				PerfectClearFlag = 0
+			}
+		loop
+		if (PerfectClearFlag == 1){ PerfectClear = 1 }
+		gosub *bornmino
+		gosub *putcheck
+		gosub *attackprocess
+
+		//置けないならゲームオーバー
+		if (Result == 1){ gosub *gameover }
+	}
+
+
+	return
+
+
+//どこまで落とせるかの確認
+*downcheck
+	KMinoX = MinoX : KMinoY = MinoY
+
+	gosub *remmino
+	repeat
+		gosub *putcheck
+		if (Result == 1){ break }
+		KMinoY++
+	loop
+
+	KMinoY--
+
+	gosub *putmino
+	
+
+	return
+
+
+*gservercheck
+	Cou0 = 0
+	repeat 4
+		MapDate(DMinoX+MinoDate(0,Cou0,DMinoR,MinoT),DMinoY+MinoDate(1,Cou0,DMinoR,MinoT)) = -1
+		Cou0++
+	loop
+
+	gosub *downcheck
+
+	DMinoX = KMinoX : DMinoY = KMinoY : DMinoR = MinoR
+
+	Cou0 = 0
+	repeat 4
+		if (MapDate(DMinoX+MinoDate(0,Cou0,BMinoR,MinoT),DMinoY+MinoDate(1,Cou0,BMinoR,MinoT)) == -1){
+			MapDate(DMinoX+MinoDate(0,Cou0,BMinoR,MinoT),DMinoY+MinoDate(1,Cou0,BMinoR,MinoT)) = -2
+		}
+		Cou0++
+	loop
+
+	return
+
+
+
+*timecheck
+	NowTime = d3timer()-FTime
+
+
+	return
+
+
+
+*bornmino
+	MinoCount++
+	if (MinoCount == 7){
+		gosub *shuffle
+		MinoLineCount = 1-MinoLineCount
+		MinoCount = 0
+	}
+	MinoT = MinoLine(MinoCount,MinoLineCount)
+	MinoR = 0
+	MinoX = StartMinoX : MinoY = StartMinoY
+	DownCount = 0 : MarginCount = 0
+	TspinFlag = 0
+	KMinoX = MinoX : KMinoY = MinoY : KMinoR = MinoR
+	BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+	DMinoX = MinoX : DMinoY = MinoY : DMinoR = MinoR
+
+	return
+
+
+
+*remmino
+	Cou0 = 0
+	repeat 4
+		MapDate(BMinoX+MinoDate(0,Cou0,BMinoR,MinoT),BMinoY+MinoDate(1,Cou0,BMinoR,MinoT)) = -1
+		Cou0++
+	loop
+
+	return
+
+
+
+*putmino
+	Cou0 = 0
+	repeat 4
+		MapDate(MinoX+MinoDate(0,Cou0,MinoR,MinoT),MinoY+MinoDate(1,Cou0,MinoR,MinoT)) = MinoT
+		Cou0++
+	loop
+
+	BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+
+	return
+
+
+
+*draw
+	redraw 0
+	color 255,255,255 : boxf
+	Cou0 = 0
+	repeat 20
+		Cou1 = 0
+		repeat MapSizeX
+			SetMinoColor MapDate(Cou1,Cou0+MapSizeY-20)
+			boxf MinoDrawAreaX+Cou1*MinoSize,MinoDrawAreaY+Cou0*MinoSize,MinoDrawAreaX+Cou1*MinoSize+MinoSize,MinoDrawAreaY+Cou0*MinoSize+MinoSize
+			Cou1++
+		loop
+		Cou0++
+	loop
+
+	//マス目の線
+	color 64,64,64
+	repeat 19,1 : line MinoDrawAreaX,MinoDrawAreaY+cnt*MinoSize,MinoDrawAreaX+10*MinoSize,MinoDrawAreaY+cnt*MinoSize : loop
+	repeat 9,1 : line MinoDrawAreaX+cnt*MinoSize,MinoDrawAreaY,MinoDrawAreaX+cnt*MinoSize,MinoDrawAreaY+20*MinoSize : loop
+
+	//ネクストミノの描写
+	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,DY/7 : mes "NEXT"
+	font msgothic, MinoSize
+	Cou0 = MinoCount
+	Cou1 = MinoLineCount
+	repeat 5
+		Cou0++
+		if (Cou0 == 7){ Cou0 = 0 : Cou1 = 1-Cou1 }
+
+		SetMinoColor MinoLine(Cou0,Cou1)
+		boxf DateDrawAreaX,DY/5+MinoSize*3*cnt,DateDrawAreaX+MinoSize*3,DY/5+MinoSize*3*cnt+MinoSize*3
+	loop
+
+	//ホールドミノの描写
+	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,double(DY)/1.3 : mes "HOLD"
+	SetMinoColor HoldMino
+	boxf DateDrawAreaX,double(DY)/1.2,DateDrawAreaX+MinoSize*3,double(DY)/1.2+MinoSize*3
+
+	if (Ren > 0){ color 0,0,0 : font msgothic,DX/50 : pos DX/40,DY/3 : mes str(Ren)+"REN" }
+	if (BacktobackClear == 1){ color 0,0,0 : font msgothic,DX/80 : pos DX/100,double(DY)/2.1 : mes "Back to Back" }
+	if (ClearLine == 4){ color 0,0,0 : font msgothic,DX/60 : pos DX/40,DY/2 : mes "Tetris" }
+	if ((TspinClear > 0) | (TspinFlag == 1)){ color 0,0,0 : font msgothic,DX/70 : pos DX/70,DY/2 : mes "T-Spin" }
+	switch TspinClear
+		case 1
+			color 0,0,0 : font msgothic,DX/70 : pos DX/30,double(DY)/1.9 : mes "Single"
+		swbreak
+		case 2
+			color 0,0,0 : font msgothic,DX/70 : pos DX/30,double(DY)/1.9 : mes "Double"
+		swbreak
+		case 3
+			color 0,0,0 : font msgothic,DX/70 : pos DX/30,double(DY)/1.9 : mes "Triple"
+		swbreak
+	swend
+	if (PerfectClear == 1){ color 0,0,0 : font msgothic,DX/80 : pos DX/100,double(DY)/1.4 : mes "Perfect Clear!" }
+
+	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,double(DY)/10 : mes str(int((NowTime/1000)/60))+" : "+strf("%02d",int((NowTime/1000)\60))
+	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX+DX/10,double(DY)/10 : mes "APM : "+str(Apm)
+	//color 0,0,0 : font msgothic,DX/80 : pos 0,0 : mes "FPS "+d3getfps()
+
+	redraw 1
+
+
+	return
+
+
+*attackprocess
+	Attack = 0
+	Attack += AttackTable(ClearLine)
+	if (Ren < 15){ Attack += RenTable(Ren) } else { Attack += RenTable(14) }
+	switch TspinClear
+		case 1
+			Attack += 2
+		swbreak
+		case 2
+			Attack += 3
+		swbreak
+		case 3
+			Attack += 4
+		swbreak
+	swend
+	if (PerfectClear == 1){ Attack += 10 }
+	if (BacktobackClear == 1){ Attack++ }
+
+	SumAttack += Attack
+	if (NowTime/1000 == 0){
+		Apm = SumAttack
+	} else {
+		Apm = int(double(SumAttack)*60/(NowTime/1000))
+	}
+
+	return
+
+
+
+*recv
+	getkey testkey,'1'
+	if testkey=1{
+		aa++
+	} else {
+		aa = 0
+	}
+	if (aa == 1){
+		SumDamage += (DamageCount+1)*2
+		Damage(DamageCount) = (DamageCount+1)*2
+		DamageCount++
+	}
+
+	if ((SumDamage > 0) & (DamageMarginSTime == 0)){ DamageMarginSTime = d3timer() }
+	if ((d3timer()-DamageMarginSTime > DamageMargin) & (DamageMarginSTime != 0)){
+		gosub *remmino
+		MinoY -= SumDamage
+		KMinoX = MinoX : KMinoY = MinoY
+		repeat
+			gosub *putcheck
+			if (Result == 1){ break }
+			KMinoY++
+		loop
+		KMinoY--
+		DMinoX = KMinoX : DMinoY = KMinoY : DMinoR = MinoR
+		Cou0 = 0
+		repeat 4
+			MapDate(DMinoX+MinoDate(0,Cou0,DMinoR,MinoT),DMinoY+MinoDate(1,Cou0,DMinoR,MinoT)) = -1
+			Cou0++
+		loop
+		repeat SumDamage
+			Cou1 = 0
+			repeat MapSizeY-1
+				repeat MapSizeX
+					MapDate(cnt,Cou1) = MapDate(cnt,Cou1+1)
+				loop
+				Cou1++
+			loop
+		loop
+
+		Cou0 = DamageCount-1 : Cou1 = MapSizeY-1
+		repeat
+			Hole = rnd(MapSizeX)
+			repeat Damage(Cou0)
+				repeat MapSizeX
+					if (cnt != Hole){ MapDate(cnt,Cou1) = 0 } else { MapDate(cnt,Cou1) = -1 }
+				loop
+				Cou1--
+			loop
+			Cou0--
+			if (Cou0 == -1){ break }
+		loop
+
+		dim Damage,100
+		SumDamage = 0
+		DamageMarginSTime = 0
+		DamageCount = 0
+
+		BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+		gosub *downcheck
+		DMinoX = KMinoX : DMinoY = KMinoY : DMinoR = MinoR
+	}
+
+	return
+
+
+
+*keycheck
+	stick key
+	if (key == 128){ end }
+	
+	getkey KeyRR,KeyCodeRR
+	if (KeyRR == 1){
+		CKeyRR++
+		if (CKeyRR == 1){
+			KMinoR = MinoR
+			if (MinoR == 3){ MinoR = 0 } else { MinoR++ }
+			gosub *remmino
+			switch MinoT/2
+				case 0
+					if (MinoT == 0){
+						MinoMoveFlag = 0
+					} else {
+						MinoMoveFlag = 1
+					}
+				swbreak
+				case 1 : MinoMoveFlag = 2 : swbreak
+				case 2 : MinoMoveFlag = 3 : swbreak
+				case 3 : MinoMoveFlag = 3 : swbreak
+			swend
+			Cou1 = 0
+			repeat 5
+				KMinoX = MinoX+MinoMoveDate(0,Cou1,MinoR,MinoMoveFlag)
+				KMinoY = MinoY+MinoMoveDate(1,Cou1,MinoR,MinoMoveFlag)
+				gosub *putcheck
+				if (Result == 0){
+					MinoX = KMinoX : MinoY = KMinoY
+					break
+				}
+				Cou1++
+			loop
+			if (Result == 1){ MinoR = KMinoR }
+			gosub *tspincheck
+			gosub *putmino
+		}
+	} else {
+		CKeyRR = 0
+	}
+	getkey KeyRL,KeyCodeRL
+	if (KeyRL == 1){
+		CKeyRL++
+		if (CKeyRL == 1){
+			KMinoR = MinoR
+			if (MinoR == 0){ MinoR = 3 } else { MinoR-- }
+			gosub *remmino
+			switch MinoT/2
+				case 0
+					if (MinoT == 0){
+						MinoMoveFlag = 0
+					} else {
+						MinoMoveFlag = 1
+					}
+				swbreak
+				case 1 : MinoMoveFlag = 2 : swbreak
+				case 2 : MinoMoveFlag = 3 : swbreak
+				case 3 : MinoMoveFlag = 3 : swbreak
+			swend
+			Cou1 = 0
+			repeat 5
+				KMinoX = MinoX+MinoMoveDate(0,Cou1,MinoR+4,MinoMoveFlag)
+				KMinoY = MinoY+MinoMoveDate(1,Cou1,MinoR+4,MinoMoveFlag)
+				gosub *putcheck
+				if (Result == 0){
+					MinoX = KMinoX : MinoY = KMinoY
+					break
+				}
+				Cou1++
+			loop
+			if (Result == 1){ MinoR = KMinoR }
+			gosub *tspincheck
+			gosub *putmino
+		}
+	} else {
+		CKeyRL = 0
+	}
+
+	
+
+	getkey KeyMR,KeyCodeMR
+	if (KeyMR == 1){
+		CKeyMR++
+		if ((CKeyMR == 1) | (CKeyMR > KeyChargeTime)){
+			KMinoX = MinoX : KMinoY = MinoY
+			KMinoX++
+			gosub *remmino
+			gosub *putcheck
+			if (Result == 0){
+				MinoX = KMinoX
+				MarginCount = int(0.95*MarginCount)
+			}
+			gosub *putmino
+		}
+	} else {
+		CKeyMR = 0
+	}
+	getkey KeyML,KeyCodeML
+	if (KeyML == 1){
+		CKeyML++
+		if ((CKeyML == 1) | (CKeyML > KeyChargeTime)){
+			KMinoX = MinoX : KMinoY = MinoY
+			KMinoX--
+			gosub *remmino
+			gosub *putcheck
+			if (Result == 0){
+				MinoX = KMinoX
+				MarginCount = int(0.95*MarginCount)
+			}
+			gosub *putmino
+		}
+	} else {
+		CKeyML = 0
+	}
+	getkey KeyMD,KeyCodeMD
+	if (KeyMD == 1){
+		DownCount += SoftDropSpeed
+	}
+	getkey KeyMU,KeyCodeMU
+	if (KeyMU == 1){
+		CKeyMU++
+		if (CKeyMU == 1){
+			gosub *downcheck
+			MinoX = KMinoX : MinoY = KMinoY
+			MarginCount = MarginTime
+		}
+	} else {
+		CKeyMU = 0
+	}
+
+	getkey KeyH,KeyCodeH
+	if (KeyH == 1){
+		CKeyH++
+		if ((CKeyH == 1) & (HoldFlag == 0)){
+			HoldFlag = 1
+			if (HoldMino == -1){
+				gosub *remmino
+				HoldMino = MinoT
+				BMinoX = DMinoX : BMinoY = DMinoY : BMinoR = DMinoR
+				gosub *remmino
+				gosub *bornmino
+			} else {
+				gosub *remmino
+				BMinoX = DMinoX : BMinoY = DMinoY : BMinoR = DMinoR
+				gosub *remmino
+				KHoldMino = HoldMino
+				HoldMino = MinoT : MinoT = KHoldMino
+				MinoR = 0
+				MinoX = StartMinoX : MinoY = StartMinoY
+				DownCount = 0 : MarginCount = 0
+				TspinFlag = 0
+				KMinoX = MinoX : KMinoY = MinoY : KMinoR = MinoR
+				BMinoX = MinoX : BMinoY = MinoY : BMinoR = MinoR
+				DMinoX = MinoX : DMinoY = MinoY : DMinoR = MinoR
+			}
+		}
+	} else {
+		CKeyH = 0
+	}
+
+
+	return
+
+*linecheck
+	Cou0 = MapSizeY-1
+	SplitClear = 0
+	SplitClearFlag = 0 : Split1ClearFlag = 0 : Split2ClearFlag = 0
+	if (ClearLine > 0){ RenFlag = 1 } else { RenFlag = 0 }
+	ClearLine = 0
+	TspinClear = 0 : BacktobackClear = 0
+	repeat MapSizeY
+		LineClearFlag = 1
+		repeat MapSizeX
+			if (MapDate(cnt,Cou0) == -1){
+				LineClearFlag = 0
+				break
+			}
+		loop
+		if (LineClearFlag == 1){
+			Cou1 = Cou0 : ClearLine++
+			repeat Cou0-1
+				repeat MapSizeX
+					MapDate(cnt,Cou1) = MapDate(cnt,Cou1-1)
+				loop
+				Cou1--
+			loop
+			if (SplitClearFlag == 0){ Split1ClearFlag++ } else { Split2ClearFlag++ }
+			Cou0++
+		} else {
+			if ((SplitClearFlag == 0) & (Split1ClearFlag > 0)){
+				SplitClearFlag = 1
+			}
+		}
+		Cou0--
+	loop
+	if ((RenFlag == 1) & (ClearLine > 0)){
+		Ren++
+	} else {
+		Ren = 0
+	}
+	if ((Split1ClearFlag > 0) & (Split2ClearFlag > 0)){
+		switch Split1ClearFlag-Split2ClearFlag
+			case 0 : SplitClear = 1 : swbreak
+			case 1 : SplitClear = 2 : swbreak
+			case -1 : SplitClear = 3 : swbreak
+		swend
+	}
+	if (TspinFlag == 1){
+		switch ClearLine
+			case 1 : TspinClear = 1 : swbreak
+			case 2 : TspinClear = 2 : swbreak
+			case 3 : TspinClear = 3 : swbreak
+		swend
+	}
+	if ((ClearLine == 4) | (TspinClear > 0)){
+		if (BacktobackFlag == 1){ BacktobackClear = 1 }
+		BacktobackFlag = 1
+	} else {
+		if (ClearLine > 0){ BacktobackFlag = 0 }
+	}
+	
+
+
+	return
+
+
+*putcheck
+	Result = 0
+	Cou0 = 0
+	K1MinoX = KMinoX : K1MinoY = KMinoY
+	repeat 4
+		K1MinoX = KMinoX+MinoDate(0,Cou0,MinoR,MinoT)
+		K1MinoY = KMinoY+MinoDate(1,Cou0,MinoR,MinoT)
+		if ((K1MinoX >= MapSizeX) | (K1MinoY >= MapSizeY) | (K1MinoX < 0) | (K1MinoY <= 0)){ Result = 1 }
+		else { if (MapDate(K1MinoX,K1MinoY) >= 0){ Result = 1 } }
+		Cou0++
+	loop
+
+	return
+
+*tspincheck
+	if (MinoT == 6){
+		TspinFlag = 0
+		switch MinoX
+			case 0
+				if ((MapDate(1,MinoY-1) >= 0) | (MapDate(1,MinoY+1) >= 0)){ TspinFlag = 1 }
+			swbreak
+			case MapSizeX-1
+				if ((MapDate(MapSizeX-2,MinoY-1) >= 0) | (MapDate(MapSizeX-2,MinoY+1) >= 0)){ TspinFlag = 1 }
+			swbreak
+			default
+				if (MinoY == MapSizeY-1){
+					if ((MapDate(MinoX-1,MapSizeY-2) >= 0) | (MapDate(MinoX+1,MapSizeY-2) >= 0)){ TspinFlag = 1 }
+				} else {
+					Cou0 = 0
+					repeat 4
+						if (MapDate(MinoX+(cnt/2)*2-1,MinoY+(cnt\2)*2-1) >= 0){
+							Cou0++
+						}
+					loop
+					if (Cou0 >= 3){ TspinFlag = 1 }
+				}
+			swbreak
+		swend
+		if (TspinFlag == 1){ BacktobackFlag = 1 }
+	}
+
+	return
+
+*shuffle
+	repeat 7
+		r = cnt + rnd(7 - cnt)
+		temp = MinoLine(r,MinoLineCount)
+		MinoLine(r,MinoLineCount) = MinoLine(cnt,MinoLineCount)
+		MinoLine(cnt,MinoLineCount) = temp
+	loop
+	return
+
+
+*gameover
+	dialog "Game Over"
+	end
+
+
+*debug
+	gsel 100 : cls
+
+	font msgothic,ginfo_dispy/50
+	mes MarginCount
+	mes DownCount
+	mes "ClearLine : "+ClearLine
+	mes "Ren : "+Ren
+	mes
+	mes "Attack : "+Attack
+	mes "SumAttack : "+SumAttack
+	mes "FPS : "+d3getfps()
+	mes "SumDamage : "+SumDamage
+	if (DamageMarginSTime != 0) : mes d3timer()-DamageMarginSTime
+	mes DamageCount
+
+	gsel 0
+
+	return
+
+
+
