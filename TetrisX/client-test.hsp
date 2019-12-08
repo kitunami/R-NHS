@@ -7,18 +7,18 @@
 	sdim IPAddress,32,MaxPlayer
 	MyIPAddress = ""
 	ownip MyIPAddress
-	Port = 50000-1	;;
+	Port = 50000
 	dim SockID,MaxPlayer
 	MaxNameLength = 16
 	dim Rate,MaxPlayer
 	sdim Name,MaxNameLength,MaxPlayer
 
-	Name(0) = str(Port) ;;
+	Name(0) = "PC"+str(Port)
 
 *clientset
 	cls : objsize DX/20,DX/20 : font msgothic,DX/100
 	mes "IPアドレスを入力してください。"
-	ServerIPAddress = "192.168.3.11" ;;
+	ServerIPAddress = ""
 	input ServerIPAddress,DX/10,DY/40
 	button goto "参加する",*clientwait
 	stop
@@ -27,7 +27,7 @@
 *clientwait
 	cls : mes "待機中です、しばらくお待ちください"
 	udpsock SockID(0),Port
-	udpsendto SockID(0),ServerIPAddress,50001;;
+	udpsendto SockID(0),ServerIPAddress,Port
 	udpput "nam0"+Name(0),SockID(0)
 
 *clientloop
@@ -37,8 +37,8 @@
 		sdim Buf,64 : sdim Info,64
 		udpget Buf,64,SockID(0)
 		udpinfo Info,SockID(0)
+
 		mes Buf
-		mes Info
 
 		if (instr(Buf,0,"num") == 0){
 			Mynum = int(strmid(Buf,3,1))
@@ -49,8 +49,7 @@
 		}
 		if (instr(Buf,0,"ipa") == 0){
 			udpsock SockID(int(strmid(Buf,3,1))),Port+int(strmid(Buf,3,1))
-			dialog strmid(Buf,3,1)
-			udpsendto SockID(int(strmid(Buf,3,1))),strmid(Buf,4,16),Port;;
+			udpsendto SockID(int(strmid(Buf,3,1))),strmid(Buf,4,16),Port
 			if (strmid(Buf,3,1) == "0"){
 				udpput "nam"+Mynum+Name(Mynum),SockID(int(strmid(Buf,3,1)))
 				udpput "ipa"+Mynum+MyIPAddress,SockID(int(strmid(Buf,3,1)))

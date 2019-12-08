@@ -1,0 +1,67 @@
+	#include "pcbnet2.as"
+
+	#define DX ginfo_dispx
+	#define DY ginfo_dispx*9/16
+
+	sdim IPAddress,32,MaxPlayer
+	MyIPAddress = ""
+	ownip MyIPAddress
+	Port = 50001
+	dim SockID,MaxPlayer
+	MaxNameLength = 16
+
+	dim Rate,MaxPlayer
+	sdim Name,MaxNameLength,MaxPlayer
+
+
+*serverwait
+	cls : objsize DX/20,DX/20 : font msgothic,DX/100
+	mes "待機中です..."
+	mes "あなたのIPアドレスは「"+MyIPAddress+"」です。"
+	mes "現在の参加者は1人です。"
+	button goto "スタート",*serverstart
+	NowPlayer = 1
+	udpsock SockID(0),Port
+
+*serverloop
+	udpcheck Packet,SockID(0)
+	repeat Packet
+		sdim Buf,64 : sdim Info,64
+		udpget Buf,64,SockID(0)
+		udpinfo Info,SockID(0)
+
+		mes Buf
+
+		if (instr(Buf,0,"nam0") == 0){
+			Name(NowPlayer) = strmid(Buf,4,MaxNameLength)
+			udpsock SockID(NowPlayer),Port+NowPlayer
+			udpsendto SockID(NowPlayer),strmid(Info,0,instr(Info,0,":")),Port
+			repeat NowPlayer-1,1
+				udpput "nam"+NowPlayer+Name(NowPlayer),SockID(cnt)
+				udpput "ipa"+NowPlayer+strmid(Info,0,instr(Info,0,":")),SockID(cnt)
+			loop
+			udpput "num"+NowPlayer,SockID(NowPlayer)
+			NowPlayer++
+
+			cls : objsize DX/20,DX/20 : font msgothic,DX/100
+			mes "待機中です..."
+			mes "あなたのIPアドレスは「"+MyIPAddress+"」です。"
+			mes "現在の参加者は"+NowPlayer+"人です。"
+			button goto "スタート",*serverstart
+		}
+	loop
+
+	await 1
+	goto *serverloop
+
+*serverstart
+	randomize
+	RandomNumber = rnd(1000)
+	
+	repeat NowPlayer-1,1
+		udpput "sta"+RandomNumber,SockID(cnt)
+	loop
+
+	dialog RandomNumber
+	end
+
