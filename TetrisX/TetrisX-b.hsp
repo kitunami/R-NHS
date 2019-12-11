@@ -3,8 +3,7 @@
 	#include "d3m.hsp"
 	netsilent	//エラーを表示させない
 
-	#define DebugMode 0
-	#define FullScreenMode 0
+	#define FullScreenMode 1	//通常 1
 
 	#define DX ginfo_winx
 	#define DY ginfo_winx*9/16
@@ -12,10 +11,15 @@
 	#define MinoSize DX/50
 	#define MinoDrawAreaX DX/10
 	#define MinoDrawAreaY DY/5
-	#define DateDrawAreaX MinoDrawAreaX+10*MinoSize+DX/50
+	#define DateDrawAreaX MinoDrawAreaX+10*MinoSize+DX/20
 	#define DateDrawAreaY
+	#define OtherMapDrawAreaX DX/2
+	#define OtherMapDrawAreaY DY/5
 	#define StartMinoX 4
 	#define StartMinoY 39
+
+	#define SingleMode 0
+	#define MultiMode 1
 
 	#define BUF_MINO 1	//ミノ画像用バッファ
 
@@ -45,13 +49,8 @@
 	buffer 1
 		celload "./skin/default/mino.png",BUF_MINO,0 : celdiv BUF_MINO,16,16,0,0
 		gmode 1
-	//デバッグ用
-	screen 100,DX/2,DY/2,screen_hide,DX/2,DY/4 : gsel 100,-1
+
 	gsel 0
-	
-	if (DebugMode == 1){
-		gsel 100,2 : gsel 0
-	}
 
 	randomize
 
@@ -148,10 +147,19 @@
 	sdim Name,MaxNameLength,MaxPlayer
 	Name(0) = "ゲストプレイヤー"
 
+	dim PlayerNowDate,MaxPlayer
+
+	sdim NowMapDate,1024,MaxPlayer
+
+	DrawFPS = 0
+
 
 	/* タイトルとかいろいろ作る */
 
 *menu
+	GameMode = SingleMode
+
+	cls
 	objmode 2
 	objsize DX/10,DY/50
 	font msgothic,DX/100
@@ -162,6 +170,8 @@
 	mes "\nマルチプレイ"
 	button goto "募集する",*serverwait
 	button goto "参加する",*clientset
+	mes ""
+	button goto "設定",*setting
 	mes ""
 	button goto "終了する",*escmenu
 	mes ""
@@ -174,11 +184,25 @@
 
 
 
+*setting
+	cls
+	font msgothic,DX/50 : mes "ゲーム設定"
+	font msgothic,DX/80
+	pos DX/80,DX/40
+	mes "FPS表示"
+	objsize DX/10,DX/30 : combox DrawFPS,DX/30,"表示しない\n表示する"
+	objsize DX/20,DX/30 : button goto "戻る",*menu
+	stop
+
+
+
 //==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
 
 
 
 *serverwait
+	GameMode = MultiMode
+	Mynum = 0
 	cls : objsize DX/20,DX/20 : font msgothic,DX/100
 	mes "待機中です..."
 	mes "あなたのIPアドレスは「"+MyIPAddress+"」です。"
@@ -200,7 +224,7 @@
 			udpsendto SockID(NowPlayer),strmid(Info,0,instr(Info,0,":")),Port
 			repeat NowPlayer-1,1
 				udpput "nam"+NowPlayer+Name(NowPlayer),SockID(cnt)
-				udpput "sci"+NowPlayer+SockID(NowPlayer),SockID(cnt)
+				udpput "ipa"+NowPlayer+strmid(Info,0,instr(Info,0,":")),SockID(cnt)
 			loop
 			udpput "num"+NowPlayer,SockID(NowPlayer)
 			NowPlayer++
@@ -228,43 +252,59 @@
 
 
 
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
+
+
+
 *clientset
 	cls : objsize DX/20,DX/20 : font msgothic,DX/100
 	mes "IPアドレスを入力してください。"
 	ServerIPAddress = ""
 	input ServerIPAddress,DX/10,DY/40
 	button goto "参加する",*clientwait
+	button goto "戻る",*menu
 	stop
 
 
 *clientwait
-	udpsock ServerSockID,Port
-	udpsendto ServerSockID,ServerIPAddress,Port
-	udpput "nam0"+Name(0),ServerSockID
+	GameMode = MultiMode
+	NowPlayer = 2
+	cls : mes "待機中です、しばらくお待ちください"
+	udpsock SockID(0),Port
+	udpsendto SockID(0),ServerIPAddress,Port
+	udpput "nam0"+Name(0),SockID(0)
 
 *clientloop
-	udpcheck Packet,ServerSockID
+	StartFlag = 0
+	udpcheck Packet,SockID(0)
 	repeat Packet
 		sdim Buf,64 : sdim Info,64
-		udpget Buf,64,ServerSockID
-		udpinfo Info,ServerSockID
+		udpget Buf,64,SockID(0)
+		udpinfo Info,SockID(0)
 
 		if (instr(Buf,0,"num") == 0){
 			Mynum = int(strmid(Buf,3,1))
 			Name(Mynum) = Name(0)
-			SockID(Mynum) = ServerSockID
 		}
 		if (instr(Buf,0,"nam") == 0){
-			dialog "処理作れ"
+			NowPlayer++
+			Name(int(strmid(Buf,3,1))) == strmid(Buf,3,MaxNameLength)
 		}
-		if (instr(Buf,0,"sci") == 0){
-			dialog "処理作れ"
+		if (instr(Buf,0,"ipa") == 0){
+			udpsock SockID(int(strmid(Buf,3,1))),Port+int(strmid(Buf,3,1))
+			udpsendto SockID(int(strmid(Buf,3,1))),strmid(Buf,4,16),Port
+			if (strmid(Buf,3,1) == "0"){
+				udpput "nam"+Mynum+Name(Mynum),SockID(int(strmid(Buf,3,1)))
+				udpput "ipa"+Mynum+MyIPAddress,SockID(int(strmid(Buf,3,1)))
+			}
 		}
 		if (instr(Buf,0,"sta") == 0){
 			RandomNumber = int(strmid(Buf,3,3))
-			goto *start
+			StartFlag = 1
 		}
 	loop
+
+	if (StartFlag == 1){ goto *start }
 
 	await 1
 	goto *clientloop
@@ -278,6 +318,10 @@
 *single
 	randomize
 	RandomNumber = rnd(1000)
+
+
+
+//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
 
 
 
@@ -314,6 +358,11 @@
 	SumAttack = 0
 	SumDamage = 0 : DamageMarginSTime = 0 : DamageMargin = 3000
 	dim Damage,100 : DamageCount = 0
+
+	//チーム戦実装でたぶん変える
+	repeat NowPlayer
+		PlayerNowDate(cnt) = 1
+	loop
 	
 
 	KeyCodeMU = 38 : KeyCodeMD = 40
@@ -353,10 +402,12 @@
 	gosub *timecheck
 	gosub *draw
 
-	gosub *recv
-
-	if (DebugMode == 1){ gosub *debug }
-
+	if (GameMode == MultiMode){
+		gosub *recvdate
+		if (MainCount\60 == 0){
+			gosub *putdate
+		}
+	}
 
 	MainCount++
 
@@ -510,23 +561,14 @@
 *draw
 	redraw 0
 	color 255,255,255 : boxf
+
+	//ミノの描写
 	Cou0 = 0
 	repeat 20
 		Cou1 = 0
 		repeat MapSizeX
 			SetMinoColor MapDate(Cou1,Cou0+MapSizeY-20)
 			boxf MinoDrawAreaX+Cou1*MinoSize,MinoDrawAreaY+Cou0*MinoSize,MinoDrawAreaX+Cou1*MinoSize+MinoSize,MinoDrawAreaY+Cou0*MinoSize+MinoSize
-
-			/*
-			pos MinoDrawAreaX+Cou1*MinoSize,MinoDrawAreaY+Cou0*MinoSize
-			if (MapDate(Cou1,Cou0+MapSizeY-20) >= 0){
-				celput BUF_MINO,MapDate(Cou1,Cou0+MapSizeY-20),double(MinoSize)/15.6,double(MinoSize)/15.6
-			} else {
-				SetMinoColor MapDate(Cou1,Cou0+MapSizeY-20)
-				boxf MinoDrawAreaX+Cou1*MinoSize,MinoDrawAreaY+Cou0*MinoSize,MinoDrawAreaX+Cou1*MinoSize+MinoSize,MinoDrawAreaY+Cou0*MinoSize+MinoSize
-			}
-			*/
-
 			Cou1++
 		loop
 		Cou0++
@@ -536,6 +578,14 @@
 	color 64,64,64
 	repeat 19,1 : line MinoDrawAreaX,MinoDrawAreaY+cnt*MinoSize,MinoDrawAreaX+10*MinoSize,MinoDrawAreaY+cnt*MinoSize : loop
 	repeat 9,1 : line MinoDrawAreaX+cnt*MinoSize,MinoDrawAreaY,MinoDrawAreaX+cnt*MinoSize,MinoDrawAreaY+20*MinoSize : loop
+
+	//ダメージゲージ
+	color 0,0,0 : boxf MinoDrawAreaX+10*MinoSize+DX/60,MinoDrawAreaY,MinoDrawAreaX+10*MinoSize+DX/36,MinoDrawAreaY+20*MinoSize
+	if (SumDamage > 20){
+		color 255,0,0 : boxf MinoDrawAreaX+10*MinoSize+DX/60,MinoDrawAreaY,MinoDrawAreaX+10*MinoSize+DX/36,MinoDrawAreaY+20*MinoSize
+	} else {
+		color 255,0,0 : boxf MinoDrawAreaX+10*MinoSize+DX/60,MinoDrawAreaY+(20-SumDamage)*MinoSize,MinoDrawAreaX+10*MinoSize+DX/36,MinoDrawAreaY+20*MinoSize
+	}
 
 	//ネクストミノの描写
 	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,DY/7 : mes "NEXT"
@@ -557,6 +607,7 @@
 		celput BUF_MINO,HoldMino+7,double(MinoSize)*3/16,double(MinoSize)*3/16
 	}
 
+	//データの描写
 	if (Ren > 0){ color 0,0,0 : font msgothic,DX/50 : pos DX/40,DY/3 : mes str(Ren)+"REN" }
 	if (BacktobackClear == 1){ color 0,0,0 : font msgothic,DX/80 : pos DX/100,double(DY)/2.1 : mes "Back to Back" }
 	if (ClearLine == 4){ color 0,0,0 : font msgothic,DX/60 : pos DX/40,DY/2 : mes "Tetris" }
@@ -577,7 +628,17 @@
 	swend
 
 	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX,double(DY)/10 : mes str(int((NowTime/1000)/60))+" : "+strf("%02d",int((NowTime/1000)\60))
-	color 0,0,0 : font msgothic,DX/50 : pos DateDrawAreaX+DX/10,double(DY)/10 : mes "APM : "+str(Apm)
+	color 0,0,0 : pos DateDrawAreaX+DX/10,double(DY)/10 : mes "APM : "+str(Apm)
+	if (DrawFPS == 1){ color 100,100,100 : pos 0,0 : mes "FPS : "+d3getfps() }
+
+	//ほかのプレイヤーの盤面描写
+	repeat NowPlayer
+		repeat 20*MapSizeX
+			SetMinoColor int(strmid(NowMapDate(Cou0),cnt*2,2))
+			boxf OtherMapDrawAreaX+Cou0*30+(cnt\MapSizeX)*20,OtherMapDrawAreaY+(cnt/MapSizeX)*20,OtherMapDrawAreaX+Cou0*30+(cnt\MapSizeX)*20+20,OtherMapDrawAreaY+(cnt/MapSizeX)*20+20
+		loop
+		Cou0++
+	loop
 
 	redraw 1
 
@@ -605,6 +666,22 @@
 
 	if ((Attack > 0) & (DamageMarginSTime != 0)){
 		DamageMarginSTime = d3timer()
+		repeat DamageCount
+			if (Attack >= Damage(DamageCount-1)){
+				SumDamage -= Damage(DamageCount-1)
+				if (SumDamage < 0){ SumDamage = 0 }
+				Attack -= Damage(DamageCount-1)
+				Damage(DamageCount-1) = 0
+				DamageCount--
+			} else {
+				Damage(DamageCount-1) -= Attack
+				SumDamage -= Attack
+				if (SumDamage < 0){ SumDamage = 0 }
+				Attack = 0
+				break
+			}
+			if (Attack == 0){ break }
+		loop
 	}
 
 	SumAttack += Attack
@@ -618,18 +695,51 @@
 
 
 
-*recv
-	getkey testkey,'1'
-	if testkey=1{
-		aa++
-	} else {
-		aa = 0
-	}
-	if (aa == 1){
-		SumDamage += (DamageCount+1)*2
-		Damage(DamageCount) = (DamageCount+1)*2
-		DamageCount++
-	}
+*putdate
+	Cou0 = 0 : NowMapDate(Mynum) = ""
+	repeat 20
+		Cou1 = 0
+		repeat MapSizeX
+			NowMapDate(Mynum) += strf("%02d",MapDate(Cou1,Cou0+MapSizeY-20))
+			Cou1++
+		loop
+		Cou0++
+	loop
+
+	repeat NowPlayer
+		if (cnt != Mynum){
+			udpput "map"+str(Mynum)+NowMapDate(Mynum),SockID(cnt)
+		}
+	loop
+
+	return
+
+
+
+*recvdate
+	Cou0 = 0
+	repeat NowPlayer
+		if (cnt != Mynum){
+			udpcheck Packet,SockID(Cou0)
+			repeat Packet
+				sdim Buf,64 : sdim Info,64
+				udpget Buf,64,SockID(Cou0)
+				udpinfo Info,SockID(Cou0)
+
+				if (instr(Buf,0,"att") == 0){
+					SumDamage += int(strmid(Buf,4,2))
+					Damage(DamageCount) = int(strmid(Buf,4,2))
+					DamageCount++
+				}
+				if (instr(Buf,0,"die") == 0){
+				}
+				if (instr(Buf,0,"map") == 0){
+					NowMapDate(int(strmid(Buf,3,1))) = strmid(Buf,4,512)
+				}
+			loop
+		}
+		Cou0++
+	loop
 
 	if ((SumDamage > 0) & (DamageMarginSTime == 0)){ DamageMarginSTime = d3timer() }
 	if ((d3timer()-DamageMarginSTime > DamageMargin) & (DamageMarginSTime != 0)){
@@ -981,25 +1091,3 @@
 
 *escmenu
 	end
-
-
-*debug
-	gsel 100 : cls
-
-	font msgothic,ginfo_dispy/50
-	mes MarginCount
-	mes DownCount
-	mes "ClearLine : "+ClearLine
-	mes "Ren : "+Ren
-	mes
-	mes "Attack : "+Attack
-	mes "SumAttack : "+SumAttack
-	mes "FPS : "+d3getfps()
-	mes "SumDamage : "+SumDamage
-	if (DamageMarginSTime != 0) : mes d3timer()-DamageMarginSTime
-	mes DamageCount
-	mes BacktobackFlag
-
-	gsel 0
-
-	return

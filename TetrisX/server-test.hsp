@@ -6,7 +6,7 @@
 	sdim IPAddress,32,MaxPlayer
 	MyIPAddress = ""
 	ownip MyIPAddress
-	Port = 50001
+	Port = 50000
 	dim SockID,MaxPlayer
 	MaxNameLength = 16
 
