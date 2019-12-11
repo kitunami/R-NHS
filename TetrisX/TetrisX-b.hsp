@@ -38,6 +38,7 @@
 				case 6 : color 128,0,255 : swbreak
 				case -1 : color 0,0,0 : swbreak
 				case -2 : color 128,128,128 : swbreak
+				case -3 : color 64,64,64 : swbreak
 				default : color 0,0,0 : swbreak
 			swend
 		return
@@ -245,7 +246,7 @@
 	RandomNumber = rnd(1000)
 	
 	repeat NowPlayer-1,1
-		udpput "sta"+RandomNumber,SockID(cnt)
+		udpput "sta"+strf("%03d",RandomNumber),SockID(cnt)
 	loop
 
 	goto *start
@@ -460,8 +461,8 @@
 		if (Result == 1){ gosub *gameover }
 	}
 
-
 	return
+
 
 
 //‚Ç‚±‚Ü‚Å—Ž‚Æ‚¹‚é‚©‚ÌŠm”F
@@ -481,6 +482,7 @@
 	
 
 	return
+
 
 
 *gservercheck
@@ -508,7 +510,6 @@
 
 *timecheck
 	NowTime = d3timer()-FTime
-
 
 	return
 
@@ -642,8 +643,8 @@
 
 	redraw 1
 
-
 	return
+
 
 
 *attackprocess
@@ -682,6 +683,31 @@
 			}
 			if (Attack == 0){ break }
 		loop
+	}
+
+	LivePlayer = 0
+	repeat NowPlayer
+		if (PlayerNowDate(cnt) > 0){
+			LivePlayer++
+		}
+	loop
+
+	if (Attack > 0){
+		if (AttackMode == 0){
+			toAttack = 0
+			repeat
+				toAttack = rnd(LivePlayer)
+				if ((toAttack != Mynum) & (PlayerNowDate(toAttack) > 0)){ break }
+			loop
+			udpput "att"+Mynum+Attack,SockID(toAttack)
+		}
+		if (AttackMode == 1){
+			repeat NowPlayer
+				if ((cnt != Mynum) & (PlayerNowDate(toAttack) > 0)){
+					udpput "att"+Mynum+Attack,SockID(cnt)
+				}
+			loop
+		}
 	}
 
 	SumAttack += Attack
@@ -732,6 +758,7 @@
 					DamageCount++
 				}
 				if (instr(Buf,0,"die") == 0){
+					PlayerNowDate(int(strmid(Buf,3,1))) = 0
 				}
 				if (instr(Buf,0,"map") == 0){
 					NowMapDate(int(strmid(Buf,3,1))) = strmid(Buf,4,512)
@@ -874,8 +901,6 @@
 		CKeyRL = 0
 	}
 
-	
-
 	getkey KeyMR,KeyCodeMR
 	if (KeyMR == 1){
 		CKeyMR++
@@ -956,8 +981,9 @@
 		CKeyH = 0
 	}
 
-
 	return
+
+
 
 *linecheck
 	Cou0 = MapSizeY-1
@@ -1021,10 +1047,9 @@
 	if (TspinFlag != 0){
 		BacktobackFlag = 1
 	}
-	
-
 
 	return
+
 
 
 *putcheck
@@ -1040,6 +1065,8 @@
 	loop
 
 	return
+
+
 
 *tspincheck
 	if (MinoT == 6){
@@ -1075,6 +1102,8 @@
 
 	return
 
+
+
 *shuffle
 	repeat 7
 		r = cnt + rnd(7 - cnt)
@@ -1085,9 +1114,42 @@
 	return
 
 
+
 *gameover
-	dialog "Game Over"
-	end
+	repeat NowPlayer
+		if (cnt != Mynum){
+			udpput "die"+Mynum,SockID(cnt)
+		}
+	loop
+
+	Cou0 = 0
+	repeat 20
+		Cou1 = 0
+		repeat MapSizeX
+			if (MapDate(Cou1,Cou0+MapSizeY-20) >= 0){ MapDate(Cou1,Cou0+MapSizeY-20) = -3 }
+			Cou1++
+		loop
+		Cou0++
+	loop
+
+	if (GameMode == MultiMode){
+		gosub *putdate
+	}
+
+*dieloop
+	if (GameMode == MultiMode){
+		gosub *recvdate
+	}
+	gosub *draw
+
+	stick key
+	if (key == 128){ end }
+
+	await 1000/60
+
+	goto *dieloop
+
+
 
 *escmenu
 	end
