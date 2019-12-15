@@ -1,10 +1,11 @@
 
 	#include "pcbnet2.as"
 	#include "d3m.hsp"
-	#include "mod_joystick.as"
 	netsilent	//エラーを表示させない
 
 	#define FullScreenMode 1	//通常 1
+
+	#define Version "β"
 
 	#define DX ginfo_winx
 	#define DY ginfo_winx*9/16
@@ -21,6 +22,8 @@
 
 	#define SingleMode 0
 	#define MultiMode 1
+	#define MemberMode 0
+	#define GuestMode 1
 
 	#define BUF_MINO 1	//ミノ画像用バッファ
 
@@ -147,25 +150,82 @@
 	dim Rate,MaxPlayer
 	sdim Name,MaxNameLength,MaxPlayer
 	Rate(0) = 1500
-	Name(0) = "Guest"
+	Name(0) = ""
 
 	dim PlayerNowDate,MaxPlayer
 
 	sdim NowMapDate,1024,MaxPlayer
 
 	DrawFPS = 1
+	HomeDirectory = dir_cur
+
+	UserMode = GuestMode
 
 
-	/* タイトルとかいろいろ作る */
+
+*maintitle
+	cls
+	pos DX/4,DX/10 : font msgothic,DX/8 : mes "Tetris X"
+	pos DX/2,0.4*DY : font msgothic,DX/20 : mes "Version "+Version
+
+	objmode 2
+	objsize DX/10,DY/20
+	font msgothic,DX/100
+	pos 0.45*DX,0.6*DY
+	button goto "ゲストプレイ",*usercheck
+	mes "\n\nユーザー名"
+	input Name(0),,DX/60,MaxNameLength
+	mes ""
+	button goto "ログイン",*usercheck
+	mes "\n"
+	button goto "終了",*escmenu
+	stop
+
+*usercheck
+	if (stat == 2){
+		if (Name(0) != ""){
+			UserMode = MemberMode
+			chdir HomeDirectory+"/user"
+			dirlist List,"*.*",5
+			if (instr(List,0,sysinfo(1)) == -1){
+				mkdir sysinfo(1)
+			} else {
+				chdir "./"+sysinfo(1)
+			}
+			dirlist List,"*.dat"
+			notesel UserDate
+			if (instr(List,0,Name(0)) == -1){
+				noteadd "1500",0
+				notesave Name(0)+".dat"
+			} else {
+				noteload Name(0)+".dat"
+				noteget Rate(0),0
+			}
+		} else {
+			dialog "名前を入力してください。"
+			goto *maintitle
+		}
+	} else {
+		UserMode = GuestMode
+		Name(0) = "Guest"
+	}
+
+
 
 *menu
 	GameMode = SingleMode
 
 	cls
+	if (UserMode == MemberMode){
+		font msgothic,DX/50
+		mes "Name : "+Name(Mynum)
+		mes "Rate : "+Rate(Mynum)
+		mes "\n"
+	}
+
 	objmode 2
 	objsize DX/10,DY/50
 	font msgothic,DX/100
-	mes "名前" : input Name(0),,DX/60,MaxNameLength
 	objsize DX/20,DX/30
 	mes "\nシングルプレイ"
 	button goto "スタート",*single
@@ -175,7 +235,7 @@
 	mes ""
 	button goto "設定",*setting
 	mes ""
-	button goto "終了する",*escmenu
+	button goto "終了",*escmenu
 	mes ""
 
 *menuloop
@@ -868,23 +928,6 @@
 	getkey KeyMD,KeyCodeMD
 	getkey KeyMU,KeyCodeMU
 
-	dim JoyDate,13
-	joyGetPosEx JoyDate,0
-	if (stat == 0){
-		switch JoyDate(10)
-			case 0     : KeyMU = 1 : swbreak
-			case 18000 : KeyMD = 1 : swbreak
-			case 9000  : KeyMR = 1 : swbreak
-			case 27000 : KeyML = 1 : swbreak
-		swend
-		switch JoyDate(8)
-			case 4 : KeyRR = 1 : swbreak
-			case 2 : KeyRL = 1 : swbreak
-			case 16 : KeyH = 1 : swbreak
-			case 32 : KeyH = 1 : swbreak
-		swend
-	}
-
 	if (KeyRR == 1){
 		CKeyRR++
 		if (CKeyRR == 1){
@@ -1239,3 +1282,4 @@
 			}
 		loop
 	}
+	end

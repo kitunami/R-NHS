@@ -1,11 +1,10 @@
 
 	#include "pcbnet2.as"
 	#include "d3m.hsp"
+	#include "mod_joystick.as"
 	netsilent	//エラーを表示させない
 
 	#define FullScreenMode 1	//通常 1
-
-	#define Version "1.00"
 
 	#define DX ginfo_winx
 	#define DY ginfo_winx*9/16
@@ -22,8 +21,6 @@
 
 	#define SingleMode 0
 	#define MultiMode 1
-	#define MemberMode 0
-	#define GuestMode 1
 
 	#define BUF_MINO 1	//ミノ画像用バッファ
 
@@ -150,84 +147,26 @@
 	dim Rate,MaxPlayer
 	sdim Name,MaxNameLength,MaxPlayer
 	Rate(0) = 1500
-	Name(0) = ""
+	Name(0) = "Guest"
 
 	dim PlayerNowDate,MaxPlayer
 
 	sdim NowMapDate,1024,MaxPlayer
 
 	DrawFPS = 1
-	HomeDirectory = dir_cur
-
-	UserMode = GuestMode
 
 
-
-*maintitle
-	cls
-	pos DX/4,DX/10 : font msgothic,DX/8 : mes "Tetris X"
-	pos 0.7*DX,0.4*DY : font msgothic,DX/50 : mes "Version "+Version
-
-	objmode 2
-	objsize DX/10,DY/20
-	font msgothic,DX/100
-	pos 0.45*DX,0.6*DY
-	button goto "ゲストプレイ",*usercheck
-	mes "\n\nユーザー名"
-	input Name(0),,DX/60,MaxNameLength
-	mes ""
-	button goto "ログイン",*usercheck
-	mes "\n"
-	button goto "終了",*escmenu
-	stop
-
-*usercheck
-	if (stat == 2){
-		if (Name(0) != ""){
-			UserMode = MemberMode
-			chdir HomeDirectory+"/user"
-			dirlist List,"*.*",5
-			if (instr(List,0,sysinfo(1)) == -1){
-				mkdir sysinfo(1)
-			} else {
-				chdir "./"+sysinfo(1)
-			}
-			dirlist List,"*.dat"
-			notesel UserDate
-			if (instr(List,0,Name(0)) == -1){
-				noteadd "1500",0
-				notesave Name(0)+".dat"
-			} else {
-				noteload Name(0)+".dat"
-				noteget Rate(0),0
-			}
-		} else {
-			dialog "名前を入力してください。"
-			goto *maintitle
-		}
-	} else {
-		UserMode = GuestMode
-		Name(0) = "Guest"
-	}
-
-
+	/* タイトルとかいろいろ作る */
 
 *menu
 	GameMode = SingleMode
 
 	cls
-	pos DX/100,0
-	if (UserMode == MemberMode){
-		font msgothic,DX/50
-		mes "Name : "+Name(Mynum)
-		mes "Rate : "+Rate(Mynum)
-		mes "\n"
-	}
-
 	objmode 2
 	objsize DX/10,DY/50
 	font msgothic,DX/100
-	objsize DX/10,DX/30
+	mes "名前" : input Name(0),,DX/60,MaxNameLength
+	objsize DX/20,DX/30
 	mes "\nシングルプレイ"
 	button goto "スタート",*single
 	mes "\nマルチプレイ"
@@ -236,7 +175,7 @@
 	mes ""
 	button goto "設定",*setting
 	mes ""
-	button goto "終了",*escmenu
+	button goto "終了する",*escmenu
 	mes ""
 
 *menuloop
@@ -321,27 +260,21 @@
 
 *clientset
 	cls : objsize DX/20,DX/20 : font msgothic,DX/100
-	mes "接続先のパソコンの左下の３桁の番号を入力してください。"
+	mes "IPアドレスを入力してください。"
 	ServerIPAddress = ""
-	input ServerIPAddress,DX/10,DY/40,3
+	input ServerIPAddress,DX/10,DY/40
 	button goto "参加する",*clientwait
 	button goto "戻る",*menu
 	stop
 
+
 *clientwait
-	if ((int(ServerIPAddress) < 101) | (int(ServerIPAddress) > 150)){
-		dialog "正しく入力がされていません。\n半角で正しく入力してください。"
-		ServerIPAddress = ""
-		goto *clientset
-	}
-	ServerIPAdress = "172.16.58."+ServerIPAddress
 	GameMode = MultiMode
 	NowPlayer = 2
 	cls : mes "待機中です、しばらくお待ちください"
 	udpsock SockID(0),Port
 	udpsendto SockID(0),ServerIPAddress,Port
 	udpput "nam0"+Name(0),SockID(0)
-	CStartTime = d3timer()
 
 *clientloop
 	StartFlag = 0
@@ -372,12 +305,6 @@
 			StartFlag = 1
 		}
 	loop
-
-	if (d3timer()-CStartTime > 5000){
-		dialog "接続できませんでした。\nもう一度試してみてください。"
-		udpclose SockID(0)
-		goto *menu
-	}
 
 	if (StartFlag == 1){ goto *start }
 
@@ -462,6 +389,18 @@
 
 	onexit goto *escgame
 
+	ddim CpuP,100
+	CpuP(0) = 1.0 : CpuP(1) = 1.0
+	dim CpuMinoT,4,7
+	CpuMinoT(0,0)=0,3,0,3
+	CpuMinoT(0,1)=2,2,2,2
+	CpuMinoT(0,2)=1,2,1,2
+	CpuMinoT(0,3)=1,2,1,2
+	CpuMinoT(0,4)=1,2,1,2
+	CpuMinoT(0,5)=1,2,1,2
+	CpuMinoT(0,6)=1,2,1,2
+	gosub *cpucheck
+
 
 
 //==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//==//
@@ -538,10 +477,12 @@
 		gosub *putcheck
 		gosub *attackprocess
 
+
 		dim MapMarginTime, MapSizeX,MapSizeY,2
 
 		//置けないならゲームオーバー
 		if (Result == 1){ gosub *gameover }
+		gosub *cpucheck
 	}
 
 	return
@@ -732,6 +673,21 @@
 		Cou0++
 	loop
 
+	pos DX/2,DY/3
+	mes "AIの頭の中"
+	a = ""
+	b = 0
+	repeat 4
+		repeat MapSizeX
+			a += ""+CGMinoP(cnt,b)+" : "
+		loop
+		a += "\n"
+		b++
+	loop
+	mes a
+	mes ""+CGMinoX+" : "+MinoX
+	mes ""+CGMinoR+" : "+MinoR
+	
 
 	redraw 1
 
@@ -933,6 +889,8 @@
 
 
 *keycheck
+	stick key
+	if key=128 : end
 	getkey KeyRR,KeyCodeRR
 	getkey KeyH,KeyCodeH
 	getkey KeyRL,KeyCodeRL
@@ -940,6 +898,25 @@
 	getkey KeyML,KeyCodeML
 	getkey KeyMD,KeyCodeMD
 	getkey KeyMU,KeyCodeMU
+
+	dim JoyDate,13
+	joyGetPosEx JoyDate,0
+	if (stat == 0){
+		switch JoyDate(10)
+			case 0     : KeyMU = 1 : swbreak
+			case 18000 : KeyMD = 1 : swbreak
+			case 9000  : KeyMR = 1 : swbreak
+			case 27000 : KeyML = 1 : swbreak
+		swend
+		switch JoyDate(8)
+			case 4 : KeyRR = 1 : swbreak
+			case 2 : KeyRL = 1 : swbreak
+			case 16 : KeyH = 1 : swbreak
+			case 32 : KeyH = 1 : swbreak
+		swend
+	}
+
+	gosub *cpumove
 
 	if (KeyRR == 1){
 		CKeyRR++
@@ -1091,6 +1068,104 @@
 
 	return
 
+
+
+*cpucheck
+	CMinoX = 0 : CMinoY = MinoY : CMinoR = 0
+	CGMinoY = MapSizeY-30
+	dim CGMinoP,MapSizeX,4
+	dim CCGMinoY,MapSizeX,4
+	repeat 4
+		repeat MapSizeX
+			BResult = 1
+			repeat 30
+				Cou0 = 0
+				C1MinoX = CMinoX : C1MinoY = CMinoY
+				Result = 0
+				repeat 4
+					C1MinoX = CMinoX+MinoDate(0,Cou0,CMinoR,MinoT)
+					C1MinoY = CMinoY+MinoDate(1,Cou0,CMinoR,MinoT)
+					if ((C1MinoX >= MapSizeX) | (C1MinoY >= MapSizeY) | (C1MinoX < 0) | (C1MinoY <= 0)){ Result = 1 }
+					else { if (MapDate(C1MinoX,C1MinoY) >= 0){ Result = 1 } }
+					Cou0++
+				loop
+
+				if (Result == 1){
+					if (CMinoY-1 > CGMinoY){ CGMinoX = CMinoX : CGMinoY = CMinoY : CGMinoR = CMinoR }
+					CCGMinoY(CMinoX,CMinoR) = CMinoY
+
+					Cou0 = 0
+					CMinoY--
+					C1MinoX = CMinoX : C1MinoY = CMinoY
+					Result = CpuMinoT(CMinoR,MinoT)
+					repeat 4
+						C1MinoX = CMinoX+MinoDate(0,Cou0,CMinoR,MinoT)
+						C1MinoY = CMinoY+MinoDate(1,Cou0,CMinoR,MinoT)
+						if ((C1MinoX >= MapSizeX) | (C1MinoY >= MapSizeY) | (C1MinoX < 0) | (C1MinoY <= 0)){
+							Result = -1 : break
+						} else {
+							if (C1MinoY+1 == MapSizeY){
+								Result++
+							} else {
+								if (MapDate(C1MinoX,C1MinoY+1) < 0){
+									Result-=2
+								} else {
+									Result++
+								}
+							}
+						}
+						Cou0++
+					loop
+
+					CGMinoP(CMinoX,CMinoR) += CpuP(1)*Result
+					//dialog ""+CMinoX+" : "+CMinoR+" : "+Result
+
+					break
+				} else {
+					CMinoY++
+				}
+			loop
+			CMinoY = MinoY
+			CMinoX++
+		loop
+		CMinoX = 0 : CMinoY = MinoY
+		CMinoR++
+		if (MinoT == 1){ break }
+	loop
+
+	MaxCGMinoP = -100 : Cou0 = 0
+	repeat 4
+		repeat MapSizeX
+			CGMinoP(cnt,Cou0) -= CpuP(0)*(CGMinoY-CCGMinoY(cnt,Cou0))
+			if (MaxCGMinoP < CGMinoP(cnt,Cou0)){
+				CGMinoX = cnt : CGMinoR = Cou0
+				MaxCGMinoP = CGMinoP(cnt,Cou0)
+			}
+		loop
+		Cou0++
+	loop
+	//dialog ""+CGMinox+" : "+cgminor
+	return
+
+*cpumove
+	if (CpuMoveCount\10 == 0){
+		if ((MinoR != CGMinoR) & (CKeyRR == 0) & (MinoT != 1)){
+			KeyRR = 1
+		} else {
+			if ((MinoX > CGMinoX) & (CKeyML == 0)){
+				KeyML = 1
+			}
+			if ((MinoX < CGMInoX) & (CKeyMR == 0)){
+				KeyMR = 1
+			}
+			if (MinoX == CGMinoX){
+				KeyMU = 1
+			}
+		}
+	}
+	CpuMoveCount++
+
+	return
 
 
 *linecheck
