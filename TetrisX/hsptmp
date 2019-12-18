@@ -5,7 +5,7 @@
 
 	#define FullScreenMode 1	//通常 1
 
-	#define Version "1.00"
+	#define Version "1.01"
 
 	#define DX ginfo_winx
 	#define DY ginfo_winx*9/16
@@ -334,7 +334,7 @@
 		ServerIPAddress = ""
 		goto *clientset
 	}
-	ServerIPAdress = "172.16.58."+ServerIPAddress
+	ServerIPAddress = "172.16.58."+ServerIPAddress
 	GameMode = MultiMode
 	NowPlayer = 2
 	cls : mes "待機中です、しばらくお待ちください"
@@ -541,7 +541,7 @@
 		dim MapMarginTime, MapSizeX,MapSizeY,2
 
 		//置けないならゲームオーバー
-		if (Result == 1){ gosub *gameover }
+		if (Result == 1){ goto *gameover }
 	}
 
 	return
@@ -838,7 +838,7 @@
 	Cou0 = 0
 	repeat NowPlayer
 		if (cnt != Mynum){
-			udpcheck Packet,SockID(Cou0)
+			udpcheck Packet,SockID(0)
 			repeat Packet
 				sdim Buf,64 : sdim Info,64
 				udpget Buf,64,SockID(Cou0)
@@ -1245,6 +1245,8 @@
 		gosub *putdate
 	}
 	CanBackFlag = 0
+
+	StartFlag = 0
 
 *dieloop
 	if (GameMode == MultiMode){

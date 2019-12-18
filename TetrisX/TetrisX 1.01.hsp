@@ -5,7 +5,7 @@
 
 	#define FullScreenMode 1	//í èÌ 1
 
-	#define Version "1.00"
+	#define Version "1.01"
 
 	#define DX ginfo_winx
 	#define DY ginfo_winx*9/16
